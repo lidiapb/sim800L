@@ -93,7 +93,7 @@ void loop()
 	int humidity = analogRead(PIN_HUMIDITY_SENSOR);	
 	int temperature = analogRead(PIN_TEMPERATURE_SENSOR);
 	float voltage = analogRead(PIN_VOLTAGE_SENSOR)* (5.01 / 1023.00) * 1.24;
-	float water_flow_L_min = measureWaterFlow();
+	float waterFlow_L_min = measureWaterFlow();
 	
 	// Calculate water volume and sum to previous one
 	int dt = currentMillis - prevFlowMeasurementTime; //calculamos la variación de tiempo
@@ -101,13 +101,13 @@ void loop()
 	
 	// Read serial input to flush volume storage
 	if (Serial.available() && Serial.read()=='r') totalWaterVolume = 0;//restablece el volumen si recibe 'r'  
-	else totalWaterVolume += (water_flow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
+	else totalWaterVolume += (waterFlow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
 		
 	// Check button status. If it is low, buttonPresed = true
 	bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);	
 	
 	// Print measurements only in debug mode
-	if(DEBUG_MODE) printMeasurements(humidity, float temp, float voltage, float waterFlow, float totalVolume, bool buttonPressed);
+	if(DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
   
 	// If batteries are running out, temperature is too low or humidity is too high, turn off the system for safety and to save power
 	if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD)
@@ -191,7 +191,7 @@ float measureWaterFlow()
 	delay(1000);   //muestra de 1 segundo
 	noInterrupts(); //Deshabilitamos  las interrupciones
 	
-	float waterFlow = pulsesCount/FLOW_CONVERSION_FACTOR
+	float waterFlow = pulsesCount/FLOW_CONVERSION_FACTOR;
 	return waterFlow;
 }
 
