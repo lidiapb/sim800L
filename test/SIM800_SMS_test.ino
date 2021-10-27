@@ -47,18 +47,31 @@ void sendSMS(String text, String phone_number)
 	
 	//Your phone number don't forget to include your country code, example +212123456789"
 	SerialSIM800.print("AT+CMGS=\""+phone_number+"\"\r");  
-	delay(500);
+	delay(200);
 	
 	//This is the text to send
 	SerialSIM800.print(text);       
-	delay(500);
+	delay(200);
 	
 	//(required according to the datasheet)
 	SerialSIM800.print((char)26);
-	delay(500);
+	delay(200);
 	
 	SerialSIM800.println();
 	
 	if(DEBUG_MODE) Serial.println("Text Sent.");
-	delay(500);
+	delay(200);	
+}
+
+// Serial event on monitor serial: Received message from module
+void serialEvent(){   
+	// Check if anything has been received in the SIM800
+	if (SerialSIM800.available() > 0){            
+		if(DEBUG_MODE) 
+		{
+			//Displays on the serial monitor if there's a communication from the module
+			Serial.println("Message received from SIM800: ");
+			Serial.write(SerialSIM800.readStringUntil("\n")); 
+		}
+	}
 }
