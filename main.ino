@@ -125,10 +125,7 @@ void loop()
 	// Calculate water volume and sum to previous one
 	int dt = currentMillis - prevFlowMeasurementTime; //calculamos la variación de tiempo
 	prevFlowMeasurementTime = currentMillis;
-	
-	// Read serial input to flush volume storage
-	if (Serial.available() && Serial.read()=='r') totalWaterVolume = 0;//restablece el volumen si recibe 'r'  
-	else totalWaterVolume += (waterFlow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
+	totalWaterVolume += (waterFlow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
 		
 	// Check button status. If it is low, buttonPresed = true
 	bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);	
@@ -265,3 +262,9 @@ void sendSMS(String text, String phone_number)
 	if(DEBUG_MODE) Serial.println("Text Sent.");
 	delay(500);
 }
+
+void serialEvent(){
+	// Read serial input to flush volume storage
+	if (Serial.available() && Serial.read()=='r') totalWaterVolume = 0;//restablece el volumen si recibe 'r' 
+	prevFlowMeasurementTime = millis();
+}	
