@@ -164,7 +164,6 @@ void loop()
 		if (buttonPressed) 
 		{
 			// Only irrigate if enough time has passed since last irrigation
-			// Only irrigate if enough time has passed since last irrigation
 			if ((currentMillis - irrigationStartTime) >= (EFFECTIVE_IRRIGATION_TIME + TIME_BETWEEN_IRRIGATIONS) && !valveOpen) 
 			{
 				irrigationStartTime = currentMillis;
@@ -240,6 +239,7 @@ void printMeasurements(int hum, int temp, float voltage, float waterFlow, float 
 	Serial.println(buttonPressed);
 }
 
+//--- Function to send an SMS to the given phone number and with the given text
 void sendSMS(String text, String phone_number)
 {
 	if(DEBUG_MODE) Serial.println("Sending SMS..."); //Show this message on serial monitor
