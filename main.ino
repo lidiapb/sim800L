@@ -54,6 +54,12 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 	
 	// Phone number for the SMSs
 	const String PHONE_NUMBER = "+34605521505";
+	
+	// SIM800L SIM number
+	const String SIM_NUMBER = "+34681960644";
+	
+	// Size of buffer for incoming data from SIM800
+	const int BUFFER_SIZE = 127;
 
 // ------------ Global variables ------------//
 	// Boolean for the irrigation valve to be open
@@ -72,9 +78,16 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 	volatile int pulsesCount; 
 	
 	// Storage of total water volume since the program start
-	float totalWaterVolume = 0;
-		
-
+	float totalWaterVolume = 0;	
+	
+	// Variables for parsing the incoming SMS
+	char bufferData[BUFFER_SIZE]; // Buffer for incoming data from SIM800	
+	char bufferIndex; // Index for writing the data into the buffer
+	bool cmtOk = false; // Boolean to signal that sender SMS parsing is on going
+	int cmtStartPos = 0; // Position of the start of sender number in the buffer
+	int cmtIndex = 0; // Current position of index in the parsing
+	char senderNum[14]; // Holds the phone number of the SMS sender (example "+34601234567")
+	
 void setup() 
 {
 	// Start serial connection 
@@ -93,27 +106,20 @@ void setup()
 	// Store the initial time
 	prevFlowMeasurementTime = millis();
 	
-	// Initialise serial communication with SIM800 for AT commands	
-	SerialSIM800.begin(9600);
+	// Initialise SIM800	
+	initializeSIM800();
 	
 	// DEBUGGING - SMS TEST
-	//sendSMS("Hello from SIM800L", PHONE_NUMBER);
+	sendSMS("TEST", SIM_NUMBER);
 }
 
 void loop() 
 {
 	// Time measurement
-	long currentMillis = millis( ) ;
+	long currentMillis = millis( );
 	
-	// Check if anything has been received in the SIM800
-	if (SerialSIM800.available()){            
-		if(DEBUG_MODE) 
-		{
-			//Displays on the serial monitor if there's a communication from the module
-			Serial.println("Communication received from SIM800: ");
-			Serial.write(SerialSIM800.read()); 
-		}
-	}
+	// Read incoming data in SIM800
+	readSIM800Data();
 	
 	// Read sensors
 	int humidity = analogRead(PIN_HUMIDITY_SENSOR);	
@@ -239,13 +245,28 @@ void printMeasurements(int hum, int temp, float voltage, float waterFlow, float 
 	Serial.println(buttonPressed);
 }
 
+//--- Function to initialize and configure the module
+void initializeSIM800()
+{
+	SerialSIM800.begin(9600);
+	SerialSIM800.println("AT");                  // Sends an ATTENTION command, reply should be OK
+	delay(1000);
+	SerialSIM800.println("AT+CMGF=1");           // Configuration for sending SMS
+	delay(1000);
+	SerialSIM800.println("AT+CNMI=1,2,0,0,0");   // Configuration for receiving SMS
+	delay(1000);
+	SerialSIM800.println("AT&W");                // Save the configuration settings
+	delay(1000);
+	
+	// Initialize the buffer for reading the incoming Serial data from SIM800
+	memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
+	bufferIndex = 0;
+}
+
 //--- Function to send an SMS to the given phone number and with the given text
 void sendSMS(String text, String phone_number)
 {
 	if(DEBUG_MODE) Serial.println("Sending SMS..."); //Show this message on serial monitor
-	//Set the module to SMS mode
-	SerialSIM800.print("AT+CMGF=1\r");                   
-	delay(100);
 	
 	//Your phone number don't forget to include your country code, example +212123456789"
 	SerialSIM800.print("AT+CMGS=\""+phone_number+"\"\r");  
@@ -255,9 +276,56 @@ void sendSMS(String text, String phone_number)
 	SerialSIM800.print(text);       
 	delay(500);
 	
-	//(required according to the datasheet)
+	//Required according to the datasheet)
 	SerialSIM800.print((char)26);
 	delay(500);
 	
 	if(DEBUG_MODE) Serial.println("Text Sent.");
+}
+
+//--- Function that checks if something has been received by SIM800 and parses it
+//    It also prints the text if DEBUG is enabled 
+//    The sender number is stored in variable senderNum
+//    The message is stored in variable message
+// ---
+void readSIM800Data()
+{
+  if(SerialSIM800.available() > 0)
+  {
+  	while (SerialSIM800.available() > 0)
+  	{ 		
+  		bufferData[bufferIndex] = SerialSIM800.read();	   
+      
+  		// Finds the string "CMT:"
+  		// if found, reset the senderNum buffer and save cmtStartPos
+  		if( (bufferData[bufferIndex-3] == 'C') && 
+  			(bufferData[bufferIndex-2] == 'M') && 
+  			(bufferData[bufferIndex-1] == 'T') && 
+  			(bufferData[bufferIndex] == ':')      )  {            
+  		  if(DEBUG_MODE) Serial.println("CMT");  
+  		  cmtOk = true;
+  		  memset(senderNum, 0, sizeof(senderNum));    
+  		  cmtStartPos = bufferIndex;  // get the position
+  		  cmtIndex = 0;            // reset pos counter 
+  		}    
+  		// String "CMT:" is found, 
+  		// parse the sender number for the reply
+  		// +CMT: "+34601234567"
+  		if ( cmtOk && ( bufferData[bufferIndex-1] == '"' )  ) { // The number starts with character "
+  		  if ( bufferData[bufferIndex] != '"' ) { // The number ends with character "
+    			senderNum[cmtIndex] =  bufferData[bufferIndex];
+    			cmtIndex++;
+  		  } 
+  		  else 
+  		  {
+    			if(DEBUG_MODE) Serial.println(senderNum);
+    			cmtOk = false; // done
+  		  }
+  		} 
+  	}
+  
+  	// Clean buffer
+  	memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
+  	bufferIndex = 0;
+  }
 }
