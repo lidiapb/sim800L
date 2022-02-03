@@ -34,6 +34,9 @@
 SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
 // ------------ Constants definition ------------//
+  // Sample time for measurements
+  const int SAMPLE_TIME = 1000;
+  
   // Minimum time between consecutive irrigations in milliseconds
   const int TIME_BETWEEN_IRRIGATIONS = 2000;
 
@@ -68,8 +71,8 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   // Boolean for relay status
   bool relayOn = false;
 
-    //Reference time for previous water volume update
-  long prevFlowMeasurementTime = 0; 
+  //Reference time for previous measurement
+  long prevMeasurementTime = 0;   
   
   // Reference time when the irrigation started
   unsigned long irrigationStartTime = 0 ;
@@ -109,9 +112,10 @@ void setup()
 
   // Define interruption for flow sensor
   attachInterrupt(0, countPulses ,RISING);//(Interrupción 0(Pin2),función,Flanco de subida)
+  interrupts();
 
   // Store the initial time
-  prevFlowMeasurementTime = millis();
+  prevMeasurementTime = millis();
   
   // Initialise SIM800  
   initializeSIM800();
@@ -122,77 +126,82 @@ void setup()
 
 void loop() 
 {
-  // Time measurement
-  long currentMillis = millis( );
-  
   // Read incoming data in SIM800
   readSIM800Data();
-  
-  // Read sensors
-  int humidity = analogRead(PIN_HUMIDITY_SENSOR); 
-  int temperature = analogRead(PIN_TEMPERATURE_SENSOR);
-  float voltage = analogRead(PIN_VOLTAGE_SENSOR)* (5.01 / 1023.00) * 1.24;
-  float waterFlow_L_min = measureWaterFlow();
-  
-  // Calculate water volume and sum to previous one
-  int dt = currentMillis - prevFlowMeasurementTime; //calculamos la variación de tiempo
-  prevFlowMeasurementTime = currentMillis;
-  
-  // Read serial input to flush volume storage
-  if (Serial.available() && Serial.read()=='r') totalWaterVolume = 0;//restablece el volumen si recibe 'r'  
-  else totalWaterVolume += (waterFlow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
     
-  // Check button status. If it is low, buttonPresed = true
-  bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);  
-  
-  // Print measurements only in debug mode
-  if(DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
-  
-  // If batteries are running out, temperature is too low or humidity is too high, turn off the system for safety and to save power
-  if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD)
-  {
-    // Ensure valves stay closed
-    closeValve();
-    valveOpen = false;
+  // Time measurement
+  long currentMillis = millis( );
+  int dt = currentMillis - prevMeasurementTime; //Elapsed time since last measurement
+
+  if(dt >= SAMPLE_TIME)
+  {  
+    prevMeasurementTime = currentMillis;      
+
+    // Calculate water flow
+    float waterFlow_L_min = (pulsesCount/FLOW_CONVERSION_FACTOR)*(SAMPLE_TIME/dt);
+    // Reset pulses count to start new water flow measurement
+    pulsesCount = 0;
+        
+    // Read serial input to flush volume storage or sum to the previous total volume instead
+    if (Serial.available() && Serial.read()=='r') totalWaterVolume = 0;//restablece el volumen si recibe 'r'  
+    else totalWaterVolume += (waterFlow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
     
-    if(relayOn)
-    {
-      // Turn off relay to remove power from the valve
-      digitalWrite(PIN_SAFETY_RELAY, LOW);
+    // Read sensors
+    int humidity = analogRead(PIN_HUMIDITY_SENSOR); 
+    int temperature = analogRead(PIN_TEMPERATURE_SENSOR);
+    float voltage = analogRead(PIN_VOLTAGE_SENSOR)* (5.01 / 1023.00) * 1.24;
       
-      relayOn = false;
-    }
-  }
-  else
-  {
-    if(!relayOn)
-    {
-      // Turn on relay to give power to the valve if it was off
-      digitalWrite(PIN_SAFETY_RELAY, HIGH);
-      
-      relayOn = true;
-    }
+    // Check button status. If it is low, buttonPresed = true
+    bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);  
     
-    // If irrigation is requested
-    if (buttonPressed) 
+    // Print measurements only in debug mode
+    if(DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
+    
+    // If batteries are running out, temperature is too low or humidity is too high, turn off the system for safety and to save power
+    if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD)
     {
-      // Only irrigate if enough time has passed since last irrigation
-      if ((currentMillis - irrigationStartTime) >= (EFFECTIVE_IRRIGATION_TIME + TIME_BETWEEN_IRRIGATIONS) && !valveOpen) 
+      // Ensure valves stay closed
+      closeValve();
+      valveOpen = false;
+      
+      if(relayOn)
       {
-        irrigationStartTime = currentMillis;
-        valveOpen = true;
-        openValve();
+        // Turn off relay to remove power from the valve
+        digitalWrite(PIN_SAFETY_RELAY, LOW);
+        
+        relayOn = false;
       }
     }
-    
-    // If the valve has been open for the configured EFFECTIVE_IRRIGATION_TIME, turn it off
-    if (currentMillis - irrigationStartTime >= EFFECTIVE_IRRIGATION_TIME && valveOpen) 
+    else
     {
-      valveOpen = false;
-      closeValve();
+      if(!relayOn)
+      {
+        // Turn on relay to give power to the valve if it was off
+        digitalWrite(PIN_SAFETY_RELAY, HIGH);
+        
+        relayOn = true;
+      }
+      
+      // If irrigation is requested
+      if (buttonPressed) 
+      {
+        // Only irrigate if enough time has passed since last irrigation
+        if ((currentMillis - irrigationStartTime) >= (EFFECTIVE_IRRIGATION_TIME + TIME_BETWEEN_IRRIGATIONS) && !valveOpen) 
+        {
+          irrigationStartTime = currentMillis;
+          valveOpen = true;
+          openValve();
+        }
+      }
+      
+      // If the valve has been open for the configured EFFECTIVE_IRRIGATION_TIME, turn it off
+      if (currentMillis - irrigationStartTime >= EFFECTIVE_IRRIGATION_TIME && valveOpen) 
+      {
+        valveOpen = false;
+        closeValve();
+      }
     }
-  }
-  delay(100);
+  } 
 }
 
 // -------- Function to open valve ---------- //
@@ -217,21 +226,9 @@ void closeValve()
 
 //---Función que se ejecuta en interrupción (ISR) ---------------//
 void countPulses ()  
-{ 
+{   
   pulsesCount++;  //incrementamos la variable de pulsos 
 } 
-
-//---Función para obtener frecuencia de los pulsos--------//
-float measureWaterFlow() 
-{
-  pulsesCount = 0; //Ponemos a 0 el número de pulsos
-  interrupts();    //Habilitamos las interrupciones
-  delay(1000);   //muestra de 1 segundo
-  noInterrupts(); //Deshabilitamos  las interrupciones
-  
-  float waterFlow = pulsesCount/FLOW_CONVERSION_FACTOR;
-  return waterFlow;
-}
 
 //--- Function for pretty-printing the measurements--------//
 void printMeasurements(int hum, int temp, float voltage, float waterFlow, float totalVolume, bool buttonPressed)
@@ -299,6 +296,7 @@ void readSIM800Data()
 {
   if(SerialSIM800.available() > 0)
   {
+    if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
     while (SerialSIM800.available() > 0)
     {     
       bufferData[bufferIndex] = SerialSIM800.read();     
@@ -354,5 +352,6 @@ void readSIM800Data()
     memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
     bufferIndex = 0;
     msgOk = false;
+    if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
   }
 }
