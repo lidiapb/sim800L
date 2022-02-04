@@ -2,7 +2,7 @@
 
 // ------------ Debug mode configuration ------------//
   # define DEBUG_MODE true
-  # define SMS_SIMULATION true // Simulate Sim800 serial in local Arduino serial
+  # define SMS_SIMULATION false // Simulate Sim800 serial in local Arduino serial
 
 // ------------ Pins definition ------------//
   // Valve: 2 pins for H-bridge (A-, A+)
