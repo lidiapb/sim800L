@@ -96,8 +96,7 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   bool msgOk = false; // Boolean to signal that the message payload parsing is on going
   int msgStartPos = 0; // Position of the start of the message in the buffer
   int msgIndex = 0; // Current position of index in the parsing of the message
-  char message[100]; // Holds the message payload
-  
+  char message[100]; // Holds the message payload  
   
 void setup() 
 {
@@ -306,8 +305,7 @@ void readSIM800Data()
 
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
-      bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();     
-      if(DEBUG_MODE) Serial.print(bufferData[bufferIndex]);     
+      bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();            
       
       // Finds the string "CMT:"
       // if found, reset the senderNum buffer and save cmtStartPos
@@ -315,7 +313,7 @@ void readSIM800Data()
         (bufferData[bufferIndex-2] == 'M') && 
         (bufferData[bufferIndex-1] == 'T') && 
         (bufferData[bufferIndex] == ':')      )  {            
-        if(DEBUG_MODE) Serial.println("CMT: ");  
+        if(DEBUG_MODE) Serial.print("CMT: ");  
         cmtOk = true;
         memset(senderNum, 0, sizeof(senderNum));    
         cmtStartPos = bufferIndex;  // get the position
@@ -325,14 +323,17 @@ void readSIM800Data()
       // String "CMT:" is found, 
       // parse the sender number for the reply
       // +CMT: "+34601234567"
-      if ( cmtOk && ( bufferData[bufferIndex-1] == '"' )  ) { // The number starts with character "
-        if ( bufferData[bufferIndex] != '"' ) { // The number ends with character "
+      if ( cmtOk )
+      {
+        if(bufferData[bufferIndex] != ' ' && bufferData[bufferIndex] != '"' && bufferData[bufferIndex] != ':') 
+        {         
           senderNum[cmtIndex] =  bufferData[bufferIndex];
-        if(DEBUG_MODE) Serial.print(senderNum[cmtIndex]);
+          if(DEBUG_MODE) Serial.print(senderNum[cmtIndex]);
           cmtIndex++;
         } 
         else 
-        {         
+        {    
+          if( cmtIndex > 0 ) // The number has been actually parsed -> The detected " was the end of the number and not the start. Otherwise, don't do anything
           cmtOk = false; // done
         }
       } 
@@ -340,13 +341,14 @@ void readSIM800Data()
       // CMT has been already parsed, the rest is the message. TODO: Review this, there are more fields. Look at the file Sample_SMS.txt
       if(cmtOk == false && cmtIndex > 0 && msgOk == false)
       {
-        if(DEBUG_MODE) Serial.println("Message: ");
+        if(DEBUG_MODE) Serial.println(); Serial.print("Message: ");
         msgOk = true;
         memset(message, 0, sizeof(message));    
         msgStartPos = bufferIndex;  // get the position
         msgIndex = 0;            // reset pos counter 
       }
-      
+
+      // msgOk means that the message is in the process of being parsed
       if ( msgOk )
       {
         message[msgIndex] = bufferData[bufferIndex];
