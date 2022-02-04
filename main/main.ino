@@ -68,6 +68,10 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
   // Command to request the status of the measurements and total water volume
   const char* STATUS_COMMAND = "ESTADO";
+  
+  // Command to request a manual irrigation (similar to pressing the button)
+  const char* IRRIGATION_COMMAND1 = "REGAR";
+  const char* IRRIGATION_COMMAND2 = "RIEGO";
 
   // Time between writes of total volume to the EEPROM in minutes 
   const int EEPROM_WRITE_SAMPLE_TIME = 60;
@@ -116,6 +120,9 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
   // Flag to only send the SMS alert once. When the battery is charged, the program will be reset and the flag will be false again
   bool lowVoltageSmsSent = false;
+
+  // Flag to mark that an irrigation has been requested by SMS
+  bool remoteIrrigationPending = false;
   
 void setup() 
 {
@@ -242,14 +249,21 @@ void loop()
       }
       
       // If irrigation is requested
-      if (buttonPressed) 
+      if (buttonPressed || remoteIrrigationPending) 
       {
         // Only irrigate if enough time has passed since last irrigation
         if ((currentMillis - irrigationStartTime) >= (EFFECTIVE_IRRIGATION_TIME + TIME_BETWEEN_IRRIGATIONS) && !valveOpen) 
-        {
+        {          
           irrigationStartTime = currentMillis;
           valveOpen = true;
           openValve();
+
+          // If the request was remote, clear the flag and notify the user that the irrigation is starting
+          if(remoteIrrigationPending)
+          {
+            remoteIrrigationPending = false;
+            sendIrrigationConfirmationSMS();
+          }
         }
       }
       
@@ -330,7 +344,7 @@ void initializeSIM800()
 //--- Function to send an SMS to the given phone number and with the given text
 void sendSMS(String text, String phone_number)
 {
-  if(DEBUG_MODE) Serial.println("Sending SMS");
+  if(DEBUG_MODE) Serial.println("Sending SMS: " + text);
   
   //Your phone number don't forget to include your country code, example +212123456789"
   SerialSIM800.print("AT+CMGS=\""+phone_number+"\"\r");  
@@ -357,10 +371,10 @@ void sendSMS(String text, String phone_number)
 void readSIM800Data()
 {
   // If SMS_SIMULATION is ON, data will be get from the user input in the console
-  bool messageReceived = SMS_SIMULATION ? (Serial.available() > 0) : SerialSIM800.available() > 0;
+  bool messageReceived = SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0);
   if(messageReceived)
   {
-    //if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
+    if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
     
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
@@ -368,7 +382,8 @@ void readSIM800Data()
       
       // Finds the string "CMT:"
       // if found, reset the senderNum buffer
-      if( (bufferData[bufferIndex-3] == 'C') && 
+      if( !cmtOk &&
+        (bufferData[bufferIndex-3] == 'C') && 
         (bufferData[bufferIndex-2] == 'M') && 
         (bufferData[bufferIndex-1] == 'T') && 
         (bufferData[bufferIndex] == ':')      )  {            
@@ -420,7 +435,8 @@ void readSIM800Data()
     memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
     bufferIndex = 0;
     msgOk = false;
-    //if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
+    cmtOk = false;
+    if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
 
     evaluateSmsCommand();
   }
@@ -431,8 +447,15 @@ void evaluateSmsCommand()
 {
   //First check for the status command
   if(strstr(message, STATUS_COMMAND))
-  {
+  {    
     sendMeasurements = true;
+    if(DEBUG_MODE) Serial.println("Measurements request received!");
+  }
+
+  if(strstr(message, IRRIGATION_COMMAND1) || strstr(message, IRRIGATION_COMMAND2))
+  {
+    remoteIrrigationPending = true;    
+    if(DEBUG_MODE) Serial.println("Remote irrigation request received!");
   }
 }
 
@@ -471,4 +494,10 @@ void sendLowVoltageSMSAlert(float voltage)
   sprintf(payload, "ALERTA! Voltage demasiado bajo: %s V",voltageStr);
   
   sendSMS(payload, PHONE_NUMBER);
+}
+
+//--- Function to inform the user that the requested irrigation is being executed ---//
+void sendIrrigationConfirmationSMS()
+{
+  sendSMS("OK! Riego en marcha", senderNum);
 }
