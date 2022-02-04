@@ -139,7 +139,7 @@ void setup()
   // Get total water volume from EEPROM
   EEPROM.get(EEPROM_ADDRESS, totalWaterVolume);
   if(isnan(totalWaterVolume)) totalWaterVolume = 0; //First time EEPROM is empty, so populate it with 0 as initial value
-  if(DEBUG_MODE) Serial.print("Last Water Volume value from EEPROM: "); Serial.println(totalWaterVolume, 1);
+  if(DEBUG_MODE) Serial.print("Last Water Volume value from EEPROM: "); Serial.println(totalWaterVolume, 3);
 }
 
 void loop() 
@@ -182,7 +182,7 @@ void loop()
 
       // Write to EEPROM
       EEPROM.put(EEPROM_ADDRESS, totalWaterVolume);
-      if(DEBUG_MODE) Serial.print("Wrote to EEPROM value: "); Serial.println(totalWaterVolume, 1);
+      if(DEBUG_MODE) Serial.print("Wrote to EEPROM value: "); Serial.println(totalWaterVolume, 3);
     }
     
     // Read sensors
