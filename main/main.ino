@@ -1,4 +1,5 @@
-#include <SoftwareSerial.h> 
+#include <SoftwareSerial.h> // For serial communication with the SIM800L module
+#include <EEPROM.h> // For persistent data storage into the memory
 
 // ------------ Debug mode configuration ------------//
   # define DEBUG_MODE true
@@ -68,6 +69,12 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   // Command to request the status of the measurements and total water volume
   const char* STATUS_COMMAND = "ESTADO";
 
+  // Time between writes of total volume to the EEPROM in minutes 
+  const int EEPROM_WRITE_SAMPLE_TIME = 60;
+
+  // EEPROM memory adress to store the data to
+  const int EEPROM_ADDRESS = 0;
+
 // ------------ Global variables ------------//
   // Boolean for the irrigation valve to be open
   bool valveOpen = false;
@@ -97,12 +104,15 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   bool msgOk = false; // Boolean to signal that the message payload parsing is on going
   int msgIndex = 0; // Current position of index in the parsing of the message  
 
- // Create the char arrays to store the SMS sender and payload
+  // Create the char arrays to store the SMS sender and payload
   char senderNum[14]; // Holds the phone number of the SMS sender (example "+34601234567")
   char message[100]; // Holds the message payload  
     
   // Variables for commands execution
   bool sendMeasurements = false; // When this is true, the Arduino will send an SMS with the measurements in the next iteration
+
+  // EEPROM persistance
+  long prevEepromWriteTime = 0;
   
 void setup() 
 {
@@ -119,15 +129,17 @@ void setup()
   // Define interruption for flow sensor
   attachInterrupt(0, countPulses ,RISING);//(Interrupción 0(Pin2),función,Flanco de subida)
   interrupts();
-
-  // Store the initial time
-  prevMeasurementTime = millis();
   
   // Initialise SIM800  
   initializeSIM800();
   
   // DEBUGGING - SMS TEST
   //sendSMS("Hello from Arduino!", PHONE_NUMBER);
+
+  // Get total water volume from EEPROM
+  EEPROM.get(EEPROM_ADDRESS, totalWaterVolume);
+  if(isnan(totalWaterVolume)) totalWaterVolume = 0; //First time EEPROM is empty, so populate it with 0 as initial value
+  if(DEBUG_MODE) Serial.print("Last Water Volume value from EEPROM: "); Serial.println(totalWaterVolume, 1);
 }
 
 void loop() 
@@ -136,10 +148,10 @@ void loop()
   readSIM800Data();
     
   // Time measurement
-  long currentMillis = millis( );
+  long currentMillis = millis();
   int dt = currentMillis - prevMeasurementTime; //Elapsed time since last measurement
 
-  if(dt >= SAMPLE_TIME)
+  if(dt >= SAMPLE_TIME || currentMillis == 0) //Run also on first iteration
   {  
     prevMeasurementTime = currentMillis;      
 
@@ -149,8 +161,29 @@ void loop()
     pulsesCount = 0;
         
     // Read serial input to flush volume storage or sum to the previous total volume instead
-    if (Serial.available() && Serial.read()=='r') totalWaterVolume = 0;//restablece el volumen si recibe 'r'  
+    if (Serial.available() && Serial.read()=='r')
+    {
+      if(DEBUG_MODE) Serial.print("Clearing total water volume and EEPROM ");
+      
+      //Flush local variable 
+      totalWaterVolume = 0;
+
+      //Clear EEPROM
+      for (int idx = 0 ; idx < EEPROM.length() ; idx++) {
+        EEPROM.write(idx, 0);        
+      }
+    }
     else totalWaterVolume += (waterFlow_L_min/60)*(dt/1000); // volumen(L)=caudal(L/s)*tiempo(s)
+
+    // Persist the totalVolume to the EEPROM when the configured time has passed
+    if((currentMillis - prevEepromWriteTime)/60000 >= EEPROM_WRITE_SAMPLE_TIME)
+    {
+      prevEepromWriteTime = currentMillis;
+
+      // Write to EEPROM
+      EEPROM.put(EEPROM_ADDRESS, totalWaterVolume);
+      if(DEBUG_MODE) Serial.print("Wrote to EEPROM value: "); Serial.println(totalWaterVolume, 1);
+    }
     
     // Read sensors
     int humidity = analogRead(PIN_HUMIDITY_SENSOR); 
@@ -314,7 +347,7 @@ void readSIM800Data()
   bool messageReceived = SMS_SIMULATION ? (Serial.available() > 0) : SerialSIM800.available() > 0;
   if(messageReceived)
   {
-    if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
+    //if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
     
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
@@ -350,7 +383,7 @@ void readSIM800Data()
         }
       } 
     
-      // CMT has been already parsed, the rest is the message. TODO: Review this, there are more fields. Look at the file Sample_SMS.txt
+      // CMT has been already parsed, the rest is the message
       if(cmtOk == false && cmtIndex > 0 && msgOk == false)
       {
         if(DEBUG_MODE) Serial.println(); Serial.print("Message: ");
@@ -374,7 +407,7 @@ void readSIM800Data()
     memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
     bufferIndex = 0;
     msgOk = false;
-    if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
+    //if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
 
     evaluateSmsCommand();
   }
