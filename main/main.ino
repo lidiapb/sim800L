@@ -3,7 +3,7 @@
 
 // ------------ Debug mode configuration ------------//
   # define DEBUG_MODE true
-  # define SMS_SIMULATION false // Simulate Sim800 serial in local Arduino serial
+  # define SMS_SIMULATION false // Simulate Sim800 serial in local Arduino serial. Example message: +CMT: "+34605521505","","22/02/04,01:47:51+04" RIEGO,MEASUREMENTS
 
 // ------------ Pins definition ------------//
   // Valve: 2 pins for H-bridge (A-, A+)
@@ -379,6 +379,7 @@ void readSIM800Data()
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
       bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();            
+      if(DEBUG_MODE) Serial.print(bufferData[bufferIndex]); 
       
       // Finds the string "CMT:"
       // if found, reset the senderNum buffer
@@ -387,7 +388,7 @@ void readSIM800Data()
         (bufferData[bufferIndex-2] == 'M') && 
         (bufferData[bufferIndex-1] == 'T') && 
         (bufferData[bufferIndex] == ':')      )  {            
-        if(DEBUG_MODE) Serial.print("CMT: ");  
+        //if(DEBUG_MODE) Serial.print("CMT: ");  
         cmtOk = true;
         memset(senderNum, 0, sizeof(senderNum));    
         cmtIndex = 0;            // reset pos counter 
@@ -401,7 +402,7 @@ void readSIM800Data()
         if(bufferData[bufferIndex] != ' ' && bufferData[bufferIndex] != '"' && bufferData[bufferIndex] != ':') 
         {         
           senderNum[cmtIndex] =  bufferData[bufferIndex];
-          if(DEBUG_MODE) Serial.print(senderNum[cmtIndex]);
+          //if(DEBUG_MODE) Serial.print(senderNum[cmtIndex]);
           cmtIndex++;
         } 
         else 
@@ -414,7 +415,7 @@ void readSIM800Data()
       // CMT has been already parsed, the rest is the message
       if(cmtOk == false && cmtIndex > 0 && msgOk == false)
       {
-        if(DEBUG_MODE) Serial.println(); Serial.print("Message: ");
+        //if(DEBUG_MODE) Serial.println(); Serial.print("Message: ");
         msgOk = true;
         memset(message, 0, sizeof(message));    
         msgIndex = 0;            // reset pos counter 
@@ -424,7 +425,7 @@ void readSIM800Data()
       if ( msgOk )
       {
         message[msgIndex] = bufferData[bufferIndex];
-        if(DEBUG_MODE) Serial.print(message[msgIndex]);
+        //if(DEBUG_MODE) Serial.print(message[msgIndex]);
         msgIndex++;
       }
 
