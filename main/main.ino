@@ -2,6 +2,7 @@
 
 // ------------ Debug mode configuration ------------//
   # define DEBUG_MODE true
+  # define SMS_SIMULATION true // Simulate Sim800 serial in local Arduino serial
 
 // ------------ Pins definition ------------//
   // Valve: 2 pins for H-bridge (A-, A+)
@@ -121,7 +122,7 @@ void setup()
   initializeSIM800();
   
   // DEBUGGING - SMS TEST
-  //sendSMS("TEST", SIM_NUMBER);
+  //sendSMS("Hello from Arduino!", PHONE_NUMBER);
 }
 
 void loop() 
@@ -138,7 +139,7 @@ void loop()
     prevMeasurementTime = currentMillis;      
 
     // Calculate water flow
-    float waterFlow_L_min = (pulsesCount/FLOW_CONVERSION_FACTOR)*(SAMPLE_TIME/dt);
+    float waterFlow_L_min = (pulsesCount/FLOW_CONVERSION_FACTOR);
     // Reset pulses count to start new water flow measurement
     pulsesCount = 0;
         
@@ -202,6 +203,7 @@ void loop()
       }
     }
   } 
+  delay(10);
 }
 
 // -------- Function to open valve ---------- //
@@ -284,6 +286,8 @@ void sendSMS(String text, String phone_number)
   SerialSIM800.print((char)26);
   delay(500);
   
+  SerialSIM800.println();
+  
   if(DEBUG_MODE) Serial.println("Text Sent.");
 }
 
@@ -294,13 +298,16 @@ void sendSMS(String text, String phone_number)
 // ---
 void readSIM800Data()
 {
-  if(SerialSIM800.available() > 0)
+  // If SMS_SIMULATION is ON, data will be get from the user input in the console
+  bool messageReceived = SMS_SIMULATION ? (Serial.available() > 0) : SerialSIM800.available() > 0;
+  if(messageReceived)
   {
     if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
-    while (SerialSIM800.available() > 0)
+
+    while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
-      bufferData[bufferIndex] = SerialSIM800.read();     
-      if(DEBUG_MODE) Serial.print(bufferData[bufferIndex]);
+      bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();     
+      if(DEBUG_MODE) Serial.print(bufferData[bufferIndex]);     
       
       // Finds the string "CMT:"
       // if found, reset the senderNum buffer and save cmtStartPos
@@ -346,6 +353,8 @@ void readSIM800Data()
         if(DEBUG_MODE) Serial.print(message[msgIndex]);
         msgIndex++;
       }
+
+      bufferIndex++;
     }     
   
     // Clean buffer
