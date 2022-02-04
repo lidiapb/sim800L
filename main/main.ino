@@ -65,6 +65,9 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   // Size of buffer for incoming data from SIM800
   const int BUFFER_SIZE = 127;
 
+  // Command to request the status of the measurements and total water volume
+  const char* STATUS_COMMAND = "ESTADO";
+
 // ------------ Global variables ------------//
   // Boolean for the irrigation valve to be open
   bool valveOpen = false;
@@ -89,14 +92,17 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   char bufferIndex; // Index for writing the data into the buffer
   
   bool cmtOk = false; // Boolean to signal that sender SMS parsing is on going
-  int cmtStartPos = 0; // Position of the start of sender number in the buffer
-  int cmtIndex = 0; // Current position of index in the parsing of the sender number
-  char senderNum[14]; // Holds the phone number of the SMS sender (example "+34601234567")
+  int cmtIndex = 0; // Current position of index in the parsing of the sender number 
   
   bool msgOk = false; // Boolean to signal that the message payload parsing is on going
-  int msgStartPos = 0; // Position of the start of the message in the buffer
-  int msgIndex = 0; // Current position of index in the parsing of the message
+  int msgIndex = 0; // Current position of index in the parsing of the message  
+
+ // Create the char arrays to store the SMS sender and payload
+  char senderNum[14]; // Holds the phone number of the SMS sender (example "+34601234567")
   char message[100]; // Holds the message payload  
+    
+  // Variables for commands execution
+  bool sendMeasurements = false; // When this is true, the Arduino will send an SMS with the measurements in the next iteration
   
 void setup() 
 {
@@ -153,6 +159,13 @@ void loop()
       
     // Check button status. If it is low, buttonPresed = true
     bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);  
+
+    // Send measurements when requested through SMS
+    if(sendMeasurements)
+    {
+      sendMeasurements = false; // Setting it to false to avoid send in loop
+      sendMeasurementsSMS(humidity, temperature, voltage, totalWaterVolume);
+    }
     
     // Print measurements only in debug mode
     if(DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
@@ -271,7 +284,7 @@ void initializeSIM800()
 //--- Function to send an SMS to the given phone number and with the given text
 void sendSMS(String text, String phone_number)
 {
-  if(DEBUG_MODE) Serial.println("Sending SMS..."); //Show this message on serial monitor
+  if(DEBUG_MODE) Serial.println("Sending SMS");
   
   //Your phone number don't forget to include your country code, example +212123456789"
   SerialSIM800.print("AT+CMGS=\""+phone_number+"\"\r");  
@@ -302,13 +315,13 @@ void readSIM800Data()
   if(messageReceived)
   {
     if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
-
+    
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
       bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();            
       
       // Finds the string "CMT:"
-      // if found, reset the senderNum buffer and save cmtStartPos
+      // if found, reset the senderNum buffer
       if( (bufferData[bufferIndex-3] == 'C') && 
         (bufferData[bufferIndex-2] == 'M') && 
         (bufferData[bufferIndex-1] == 'T') && 
@@ -316,7 +329,6 @@ void readSIM800Data()
         if(DEBUG_MODE) Serial.print("CMT: ");  
         cmtOk = true;
         memset(senderNum, 0, sizeof(senderNum));    
-        cmtStartPos = bufferIndex;  // get the position
         cmtIndex = 0;            // reset pos counter 
       }
     
@@ -344,7 +356,6 @@ void readSIM800Data()
         if(DEBUG_MODE) Serial.println(); Serial.print("Message: ");
         msgOk = true;
         memset(message, 0, sizeof(message));    
-        msgStartPos = bufferIndex;  // get the position
         msgIndex = 0;            // reset pos counter 
       }
 
@@ -364,5 +375,40 @@ void readSIM800Data()
     bufferIndex = 0;
     msgOk = false;
     if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
+
+    evaluateSmsCommand();
   }
+}
+
+//--- Function that checks whether the received SMS matches any of the predefined commands and executes it ---//
+void evaluateSmsCommand()
+{
+  //First check for the status command
+  if(strstr(message, STATUS_COMMAND))
+  {
+    sendMeasurements = true;
+  }
+}
+
+//--- Function to format and send the SMS with the sensor measurements ---//
+void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
+{
+  char payload[100];
+
+  // Convert floatt to char arrays. Sprintf does not work with floats
+  char voltageStr[10];
+  char volumeStr[10];
+  dtostrf(voltage,3,2,voltageStr);// Minimum 3 digits (with the decimal point) and 2 decimals of precision
+  dtostrf(totalVolume,3,2,volumeStr);
+ 
+  sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s",hum,temp,voltageStr,volumeStr);
+  if(DEBUG_MODE)
+  {
+    Serial.print("SMS payload: ");
+    Serial.println(payload);
+    Serial.print("Phone number: ");
+    Serial.println(senderNum);
+  }
+  
+   sendSMS(payload, senderNum);
 }
