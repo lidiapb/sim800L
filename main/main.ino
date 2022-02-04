@@ -54,10 +54,10 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   // Temperature threshold for irrigation (only irrigate over this value)
   const int TEMPERATURE_THRESHOLD = 980;
   
-  // Voltage threshold for irrigation (only irrigate over this value)
+  // Voltage threshold for irrigation (only irrigate over this value) and SMS alert
   const int VOLTAGE_THRESHOLD = 6;
   
-  // Phone number for the SMSs
+  // Phone number for the SMS alerts
   const String PHONE_NUMBER = "+34605521505";
   
   // SIM800L SIM number
@@ -113,6 +113,9 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
   // EEPROM persistance
   long prevEepromWriteTime = 0;
+
+  // Flag to only send the SMS alert once. When the battery is charged, the program will be reset and the flag will be false again
+  bool lowVoltageSmsSent = false;
   
 void setup() 
 {
@@ -189,6 +192,13 @@ void loop()
     int humidity = analogRead(PIN_HUMIDITY_SENSOR); 
     int temperature = analogRead(PIN_TEMPERATURE_SENSOR);
     float voltage = analogRead(PIN_VOLTAGE_SENSOR)* (5.01 / 1023.00) * 1.24;
+
+    // SMS alert if voltage is under threshold
+    if(voltage < VOLTAGE_THRESHOLD && !lowVoltageSmsSent)
+    {      
+      lowVoltageSmsSent = true;
+      sendLowVoltageSMSAlert(voltage);
+    }
       
     // Check button status. If it is low, buttonPresed = true
     bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);  
@@ -207,8 +217,11 @@ void loop()
     if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD)
     {
       // Ensure valves stay closed
-      closeValve();
-      valveOpen = false;
+      if(valveOpen)
+      {
+        closeValve();
+        valveOpen = false;
+      }
       
       if(relayOn)
       {
@@ -423,7 +436,7 @@ void evaluateSmsCommand()
   }
 }
 
-//--- Function to format and send the SMS with the sensor measurements ---//
+//--- Function to format and send the SMS with the sensor measurements. The used phone number is the one read from the received request ---//
 void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
 {
   char payload[100];
@@ -444,4 +457,18 @@ void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
   }
   
    sendSMS(payload, senderNum);
+}
+
+//--- Function to send SMS alert when the voltage is too low. The used SMS is the one that is configured by default in the application ---//
+void sendLowVoltageSMSAlert(float voltage)
+{
+  char payload[100];
+
+  // Convert floatt to char arrays. Sprintf does not work with floats
+  char voltageStr[10];
+  dtostrf(voltage,3,2,voltageStr);// Minimum 3 digits (with the decimal point) and 2 decimals of precision
+ 
+  sprintf(payload, "ALERTA! Voltage demasiado bajo: %s V",voltageStr);
+  
+  sendSMS(payload, PHONE_NUMBER);
 }
