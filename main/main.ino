@@ -142,9 +142,6 @@ void setup()
   
   // Initialise SIM800  
   initializeSIM800();
-  
-  // DEBUGGING - SMS TEST
-  //sendSMS("Hello from Arduino!", PHONE_NUMBER);
 
   // Get total water volume from EEPROM
   EEPROM.get(EEPROM_ADDRESS, totalWaterVolume);
@@ -323,44 +320,63 @@ void printMeasurements(int hum, int temp, float voltage, float waterFlow, float 
   Serial.println(buttonPressed);
 }
 
-//--- Function to initialize and configure the module
+//--- Function to initialize and configure the module. Input buffer is read after every command to avoid buffer overflow
 void initializeSIM800()
 {
   SerialSIM800.begin(9600);
-  SerialSIM800.println("AT");                  // Sends an ATTENTION command, reply should be OK
-  delay(1000);
+  
+  SerialSIM800.println("AT");                  // Sends an ATTENTION command for initial handshake, reply should be OK
+  delay(100);
+  readSIM800Data();
+  
+  SerialSIM800.println("AT+CCID");             //Read SIM information to confirm whether the SIM is plugged
+  delay(100);
+  readSIM800Data();
+
   SerialSIM800.println("AT+CMGF=1");           // Configuration for sending SMS
-  delay(1000);
+  delay(100);
+  readSIM800Data();
+  
   SerialSIM800.println("AT+CNMI=1,2,0,0,0");   // Configuration for receiving SMS
-  delay(1000);
+  delay(100);
+  readSIM800Data();
+  
+  SerialSIM800.println("AT+CSQ");              // Check signal strength
+  delay(100);
+  readSIM800Data();
+  
+  SerialSIM800.println("AT+CREG?");            // Network registration test
+  delay(100); 
+  readSIM800Data();
+  
   SerialSIM800.println("AT&W");                // Save the configuration settings
-  delay(1000);
+  delay(100);
+  readSIM800Data();
   
   // Initialize the buffer for reading the incoming Serial data from SIM800
-  memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
+  memset(bufferData, 0, sizeof(bufferData));
   bufferIndex = 0;
 }
 
 //--- Function to send an SMS to the given phone number and with the given text
 void sendSMS(String text, String phone_number)
 {
-  if(DEBUG_MODE) Serial.println("Sending SMS: " + text);
+  if(DEBUG_MODE) Serial.println("Sending SMS: " + text + " to number: " + phone_number);
   
   //Your phone number don't forget to include your country code, example +212123456789"
   SerialSIM800.print("AT+CMGS=\""+phone_number+"\"\r");  
-  delay(500);
+  delay(100);
+  readSIM800Data();
   
   //This is the text to send
   SerialSIM800.print(text);       
-  delay(500);
+  delay(100);
+  readSIM800Data();
   
   //Required according to the datasheet)
   SerialSIM800.print((char)26);
-  delay(500);
-  
-  SerialSIM800.println();
-  
-  if(DEBUG_MODE) Serial.println("Text Sent.");
+  delay(10000);
+  readSIM800Data();
 }
 
 //--- Function that checks if something has been received by SIM800 and parses it
@@ -371,15 +387,12 @@ void sendSMS(String text, String phone_number)
 void readSIM800Data()
 {
   // If SMS_SIMULATION is ON, data will be get from the user input in the console
-  bool messageReceived = SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0);
-  if(messageReceived)
+  if(SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
   {
-    if(DEBUG_MODE) Serial.println("---------------------------------> Message has been received!");
     
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
-      bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();            
-      if(DEBUG_MODE) Serial.print(bufferData[bufferIndex]); 
+      bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();                  
       
       // Finds the string "CMT:"
       // if found, reset the senderNum buffer
@@ -388,7 +401,6 @@ void readSIM800Data()
         (bufferData[bufferIndex-2] == 'M') && 
         (bufferData[bufferIndex-1] == 'T') && 
         (bufferData[bufferIndex] == ':')      )  {            
-        //if(DEBUG_MODE) Serial.print("CMT: ");  
         cmtOk = true;
         memset(senderNum, 0, sizeof(senderNum));    
         cmtIndex = 0;            // reset pos counter 
@@ -402,7 +414,6 @@ void readSIM800Data()
         if(bufferData[bufferIndex] != ' ' && bufferData[bufferIndex] != '"' && bufferData[bufferIndex] != ':') 
         {         
           senderNum[cmtIndex] =  bufferData[bufferIndex];
-          //if(DEBUG_MODE) Serial.print(senderNum[cmtIndex]);
           cmtIndex++;
         } 
         else 
@@ -415,7 +426,6 @@ void readSIM800Data()
       // CMT has been already parsed, the rest is the message
       if(cmtOk == false && cmtIndex > 0 && msgOk == false)
       {
-        //if(DEBUG_MODE) Serial.println(); Serial.print("Message: ");
         msgOk = true;
         memset(message, 0, sizeof(message));    
         msgIndex = 0;            // reset pos counter 
@@ -425,21 +435,30 @@ void readSIM800Data()
       if ( msgOk )
       {
         message[msgIndex] = bufferData[bufferIndex];
-        //if(DEBUG_MODE) Serial.print(message[msgIndex]);
         msgIndex++;
       }
 
       bufferIndex++;
     }     
-  
+
+    if(DEBUG_MODE) 
+    {
+      Serial.println("------------------> New message: "); 
+      Serial.println(bufferData); 
+    }
+    
     // Clean buffer
     memset(bufferData, 0, sizeof(bufferData)); // Initialize the string 
     bufferIndex = 0;
     msgOk = false;
     cmtOk = false;
-    if(DEBUG_MODE) Serial.println("---------------------------------> End of message");
 
-    evaluateSmsCommand();
+    // Only evaluate SMS command if a CMT number was received
+    if(cmtIndex > 0) 
+    {
+      cmtIndex = 0;
+      evaluateSmsCommand();
+    }
   }
 }
 
@@ -472,15 +491,8 @@ void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
   dtostrf(totalVolume,3,2,volumeStr);
  
   sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s",hum,temp,voltageStr,volumeStr);
-  if(DEBUG_MODE)
-  {
-    Serial.print("SMS payload: ");
-    Serial.println(payload);
-    Serial.print("Phone number: ");
-    Serial.println(senderNum);
-  }
-  
-   sendSMS(payload, senderNum);
+
+  sendSMS(payload, senderNum);
 }
 
 //--- Function to send SMS alert when the voltage is too low. The used SMS is the one that is configured by default in the application ---//
