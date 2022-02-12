@@ -123,6 +123,9 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
   // Flag to mark that an irrigation has been requested by SMS
   bool remoteIrrigationPending = false;
+
+  // Flag set to true when an irrigation ends and the button is still pressed. If this happens then the relay will be closed for safety and an SMS alert will be sent
+  bool buttonBrokenFlag = false;
   
 void setup() 
 {
@@ -204,8 +207,8 @@ void loop()
       sendLowVoltageSMSAlert(voltage);
     }
       
-    // Check button status. If it is low, buttonPresed = true
-    bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);  
+    // Check button status. If it is low, buttonPresed = true. If the button is broken, this will always give false to ignore it and stop irrgating
+    bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON) && !buttonBrokenFlag;  
 
     // Send measurements when requested through SMS
     if(sendMeasurements)
@@ -217,8 +220,8 @@ void loop()
     // Print measurements only in debug mode
     if(DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
     
-    // If batteries are running out, temperature is too low or humidity is too high, turn off the system for safety and to save power
-    if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD)
+    // If batteries are running out, temperature is too low or humidity is too high or the button is broken, turn off the system for safety and to save power
+    if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD || buttonBrokenFlag)
     {
       // Ensure valves stay closed
       if(valveOpen)
@@ -269,6 +272,16 @@ void loop()
       {
         valveOpen = false;
         closeValve();
+
+        // If the button is still pressed after the irrigation has ended, consider that it is broken
+        if(buttonPressed && !buttonBrokenFlag)
+        {
+          // Send SMS to nofity that the button is broken
+          sendBrokenButtonSMS();
+
+          // Set flag to close valve, relay and ignore button in the future
+          buttonBrokenFlag = true;
+        }
       }
     }
   } 
@@ -514,4 +527,10 @@ void sendLowVoltageSMSAlert(float voltage)
 void sendIrrigationConfirmationSMS()
 {
   sendSMS("OK! Riego en marcha", senderNum);
+}
+
+//--- Function to inform the user that the button is broken ---//
+void sendBrokenButtonSMS()
+{
+  sendSMS("ALERTA! El boton de riego esta bloqueado. Apagando rele.", PHONE_NUMBER);
 }
