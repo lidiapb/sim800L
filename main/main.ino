@@ -505,7 +505,7 @@ void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
   dtostrf(voltage,3,2,voltageStr);// Minimum 3 digits (with the decimal point) and 2 decimals of precision
   dtostrf(totalVolume,3,2,volumeStr);
  
-  sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s",hum,temp,voltageStr,volumeStr);
+  sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s,RIEGO:%s,RELE:%s",hum,temp,voltageStr,volumeStr,valveOpen?"SI":"NO",relayOn?"ABIERTO":"CERRADO");
 
   sendSMS(payload, senderNum);
 }
