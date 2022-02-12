@@ -73,6 +73,9 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   const char* IRRIGATION_COMMAND1 = "REGAR";
   const char* IRRIGATION_COMMAND2 = "RIEGO";
 
+  // Command to request a manual close of the relay
+  const char* CLOSE_COMMAND = "CERRAR";
+
   // Time between writes of total volume to the EEPROM in minutes 
   const int EEPROM_WRITE_SAMPLE_TIME = 60;
 
@@ -126,6 +129,9 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
   // Flag set to true when an irrigation ends and the button is still pressed. If this happens then the relay will be closed for safety and an SMS alert will be sent
   bool buttonBrokenFlag = false;
+
+  // Flag to mark that a relay closure has been requested by SMS
+  bool closeRelayRequested = false;
   
 void setup() 
 {
@@ -222,7 +228,7 @@ void loop()
     if(DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
     
     // If batteries are running out, temperature is too low or humidity is too high or the button is broken, turn off the system for safety and to save power
-    if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD || buttonBrokenFlag)
+    if(humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD || buttonBrokenFlag || closeRelayRequested)
     {
       // Ensure valves stay closed
       if(valveOpen)
@@ -492,6 +498,13 @@ void evaluateSmsCommand()
     remoteIrrigationPending = true;    
     if(DEBUG_MODE) Serial.println("Remote irrigation request received!");
   }
+
+  if(strstr(message, CLOSE_COMMAND))
+  {    
+    closeRelayRequested = true;
+    if(DEBUG_MODE) Serial.println("Relay closure request received!");
+    sendCloseRelayConfirmationSMS();
+  }
 }
 
 //--- Function to format and send the SMS with the sensor measurements. The used phone number is the one read from the received request ---//
@@ -534,4 +547,10 @@ void sendIrrigationConfirmationSMS()
 void sendBrokenButtonSMS()
 {
   sendSMS("ALERTA! El boton de riego esta bloqueado. Apagando rele.", PHONE_NUMBER);
+}
+
+//--- Function to inform the user that the requested relay closure is being executed ---//
+void sendCloseRelayConfirmationSMS()
+{
+  sendSMS("OK! Cerrando rele", senderNum);
 }
