@@ -189,6 +189,7 @@ void loop()
     if((currentMillis - prevEepromWriteTime)/60000 >= EEPROM_WRITE_SAMPLE_TIME)
     {
       prevEepromWriteTime = currentMillis;
+      sendMeasurements = true; // Set flag to true to send the measurements with the new stored water volume to the phone
 
       // Write to EEPROM
       EEPROM.put(EEPROM_ADDRESS, totalWaterVolume);
