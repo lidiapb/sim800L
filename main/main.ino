@@ -376,6 +376,10 @@ void initializeSIM800()
   // Initialize the buffer for reading the incoming Serial data from SIM800
   memset(bufferData, 0, sizeof(bufferData));
   bufferIndex = 0;
+
+  // Initially store the PHONE_NUMBER as senderNum for the periodic measurements send.
+  PHONE_NUMBER.toCharArray(senderNum, 14);
+  Serial.println(senderNum); 
 }
 
 //--- Function to send an SMS to the given phone number and with the given text
