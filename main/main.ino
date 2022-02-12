@@ -385,11 +385,12 @@ void sendSMS(String text, String phone_number)
 //    The message is stored in variable message
 // ---
 void readSIM800Data()
-{
+{  
   // If SMS_SIMULATION is ON, data will be get from the user input in the console
   if(SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
   {
-    
+    // Stop for 1 second to ensure that the full SMS is received
+    delay(1000);  
     while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {     
       bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();                  
