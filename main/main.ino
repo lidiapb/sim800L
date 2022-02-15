@@ -6,9 +6,13 @@
   # define SMS_SIMULATION false // Simulate Sim800 serial in local Arduino serial. Example message: +CMT: "+34605521505","","22/02/04,01:47:51+04" RIEGO,MEASUREMENTS
 
 // ------------ Pins definition ------------//
-  // Valve: 2 pins for H-bridge (A-, A+)
-  #define PIN_VALVE_A1 12
-  #define PIN_VALVE_A2 11
+  // Valve 1: 2 pins for H-bridge (A-, A+)
+  #define PIN_VALVE1_A1 12
+  #define PIN_VALVE1_A2 11
+
+  // Valve 2: 2 pins for H-bridge (A-, A+)
+  #define PIN_VALVE2_A1 6
+  #define PIN_VALVE2_A2 5
 
   // Water flow sensor
   #define PIN_FLOW_SENSOR 2
@@ -141,8 +145,10 @@ void setup()
   // Define pin modes
   pinMode(PIN_FLOW_SENSOR, INPUT); 
   pinMode(PIN_INPUT_BUTTON, INPUT_PULLUP); // Configura pin 7 interno pull-up resistor  Estado en 1, requiere 0 para activarse
-  pinMode(PIN_VALVE_A1, OUTPUT); // Pin valvula A-
-  pinMode(PIN_VALVE_A2, OUTPUT); // Pin valvula A+
+  pinMode(PIN_VALVE1_A1, OUTPUT); // Pin valvula 1 A-
+  pinMode(PIN_VALVE1_A2, OUTPUT); // Pin valvula 1 A+
+  pinMode(PIN_VALVE2_A1, OUTPUT); // Pin valvula 2 A-
+  pinMode(PIN_VALVE2_A2, OUTPUT); // Pin valvula 2 A+
   pinMode(PIN_SAFETY_RELAY, OUTPUT); // Salida rele para apagado voltage seguridad
 
   // Define interruption for flow sensor
@@ -233,7 +239,7 @@ void loop()
       // Ensure valves stay closed
       if(valveOpen)
       {
-        closeValve();
+        closeValves();
         valveOpen = false;
       }
       
@@ -263,7 +269,7 @@ void loop()
         {          
           irrigationStartTime = currentMillis;
           valveOpen = true;
-          openValve();
+          openValves();
 
           // If the request was remote, clear the flag and notify the user that the irrigation is starting
           if(remoteIrrigationPending)
@@ -278,7 +284,7 @@ void loop()
       if (currentMillis - irrigationStartTime >= EFFECTIVE_IRRIGATION_TIME && valveOpen) 
       {
         valveOpen = false;
-        closeValve();
+        closeValves();
 
         // If the button is still pressed after the irrigation has ended, consider that it is broken
         if(buttonPressed && !buttonBrokenFlag)
@@ -296,22 +302,34 @@ void loop()
 }
 
 // -------- Function to open valve ---------- //
-void openValve() 
+void openValves() 
 {
-  digitalWrite(PIN_VALVE_A1, HIGH);
-  digitalWrite(PIN_VALVE_A2, LOW);
+  digitalWrite(PIN_VALVE1_A1, HIGH);
+  digitalWrite(PIN_VALVE1_A2, LOW);
+
+  digitalWrite(PIN_VALVE2_A1, HIGH);
+  digitalWrite(PIN_VALVE2_A2, LOW);
+  
   delay(300);
-  digitalWrite(PIN_VALVE_A1, LOW);
+  
+  digitalWrite(PIN_VALVE1_A1, LOW);
+  digitalWrite(PIN_VALVE2_A1, LOW);
   if(DEBUG_MODE) Serial.println("OPEN RIEGO");
 }
 
 // -------- Function to close valve ---------- //
-void closeValve() 
+void closeValves() 
 {
-  digitalWrite(PIN_VALVE_A2, HIGH);
-  digitalWrite(PIN_VALVE_A1, LOW);
+  digitalWrite(PIN_VALVE1_A2, HIGH);
+  digitalWrite(PIN_VALVE1_A1, LOW);
+
+  digitalWrite(PIN_VALVE2_A2, HIGH);
+  digitalWrite(PIN_VALVE2_A1, LOW);
+  
   delay(300);
-  digitalWrite(PIN_VALVE_A2, LOW);
+  
+  digitalWrite(PIN_VALVE1_A2, LOW);
+  digitalWrite(PIN_VALVE2_A2, LOW);
   if(DEBUG_MODE) Serial.println("CLOSED RIEGO");
 }
 
