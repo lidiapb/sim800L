@@ -77,7 +77,7 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
   const char* CLOSE_COMMAND = "CERRAR";
 
   // Time between writes of total volume to the EEPROM in minutes 
-  const int EEPROM_WRITE_SAMPLE_TIME = 60;
+  const int EEPROM_WRITE_SAMPLE_TIME = 1440; //24h
 
   // EEPROM memory adress to store the data to
   const int EEPROM_ADDRESS = 0;
