@@ -50,7 +50,8 @@ const int TIME_BETWEEN_IRRIGATIONS2 = 2000;
 
 // Safety time to detect that a button is stuck on the pushed position and
 // consider that it is broken in milliseconds
-const int BUTTON_SAFETY_TIME = 10000;
+const int BUTTON_SAFETY_TIME1 = 10000;
+const int BUTTON_SAFETY_TIME2 = 10000;
 
 // Effective irrigation time in milliseconds for valves 1 and 2
 const int EFFECTIVE_IRRIGATION_TIME1 = 7000;
@@ -374,6 +375,7 @@ void loop()
     bool * wasButtonPressedPtr;
     int * buttonPressedStartTimePtr;
     bool * buttonBrokenFlagPtr;
+    int buttonSafetyTime;
     
     switch (buttonId)
     {
@@ -382,12 +384,14 @@ void loop()
         wasButtonPressedPtr = &wasButtonPressed1;
         buttonPressedStartTimePtr = &buttonPressedStartTime1;
         buttonBrokenFlagPtr = &buttonBrokenFlag1;
+        buttonSafetyTime = BUTTON_SAFETY_TIME1;
         break;
       case 2:
         buttonPin = PIN_INPUT_BUTTON2;
         wasButtonPressedPtr = &wasButtonPressed2;
         buttonPressedStartTimePtr = &buttonPressedStartTime2;
         buttonBrokenFlagPtr = &buttonBrokenFlag2;
+        buttonSafetyTime = BUTTON_SAFETY_TIME2;
         break;
       default:
         // Unconfigured button selected, just exit the function and trigger a debug message
@@ -412,7 +416,7 @@ void loop()
       {
         // The button was already pressed, check if it has been pressed for too long to detect a failure
         int buttonPressedElapsedTime = currentMillis - *buttonPressedStartTimePtr;
-        if (buttonPressedElapsedTime >= BUTTON_SAFETY_TIME)
+        if (buttonPressedElapsedTime >= buttonSafetyTime)
         {
           if(DEBUG_MODE) Serial.println("Failure in button, ignoring status and sending SMS alert");
           
