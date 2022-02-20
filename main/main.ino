@@ -494,7 +494,7 @@ void loop()
 
     //Required according to the datasheet)
     SerialSIM800.print((char)26);
-    delay(15000);
+    delay(1000);
     readSIM800Data();
   }
 
