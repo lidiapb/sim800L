@@ -67,13 +67,10 @@ const int HUMIDITY_THRESHOLD = 720;
 const int TEMPERATURE_THRESHOLD = 980;
 
 // Voltage threshold for irrigation (only irrigate over this value) and SMS alert
-const int VOLTAGE_THRESHOLD = 6;
+const byte VOLTAGE_THRESHOLD = 6;
 
 // Phone number for the SMS alerts
 const String PHONE_NUMBER = "+34605521505";
-
-// SIM800L SIM number
-const String SIM_NUMBER = "+34681960644";
 
 // Size of buffer for incoming data from SIM800
 const int BUFFER_SIZE = 127;
@@ -103,14 +100,14 @@ bool valveOpen2 = false;
 bool relayOn = false;
 
 //Reference time for previous measurement
-long prevMeasurementTime = 0;
+unsigned long prevMeasurementTime = 0;
 
 // Reference time when the irrigation started
 unsigned long irrigationStartTime1 = 0 ;
 unsigned long irrigationStartTime2 = 0 ;
 
 // Counter for flow sensor pulses
-volatile int pulsesCount;
+volatile unsigned int pulsesCount;
 
 // Storage of total water volume since the program start
 float totalWaterVolume = 0;
@@ -120,10 +117,10 @@ char bufferData[BUFFER_SIZE]; // Buffer for incoming data from SIM800
 char bufferIndex; // Index for writing the data into the buffer
 
 bool cmtOk = false; // Boolean to signal that sender SMS parsing is on going
-int cmtIndex = 0; // Current position of index in the parsing of the sender number
+byte cmtIndex = 0; // Current position of index in the parsing of the sender number
 
 bool msgOk = false; // Boolean to signal that the message payload parsing is on going
-int msgIndex = 0; // Current position of index in the parsing of the message
+byte msgIndex = 0; // Current position of index in the parsing of the message
 
 // Create the char arrays to store the SMS sender and payload
 char senderNum[14]; // Holds the phone number of the SMS sender (example "+34601234567")
@@ -133,7 +130,7 @@ char message[100]; // Holds the message payload
 bool sendMeasurements = false; // When this is true, the Arduino will send an SMS with the measurements in the next iteration
 
 // EEPROM persistance
-long prevEepromWriteTime = 0;
+unsigned long prevEepromWriteTime = 0;
 
 // Flag to only send the SMS alert once. When the battery is charged, the program will be reset and the flag will be false again
 bool lowVoltageSmsSent = false;
@@ -147,8 +144,8 @@ bool wasButtonPressed1 = false;
 bool wasButtonPressed2 = false;
 
 // Variable to store the initial timestamp when the button was pressed (in milliseconds since program start time)
-int buttonPressedStartTime1 = 0;
-int buttonPressedStartTime2 = 0;
+unsigned long buttonPressedStartTime1 = 0;
+unsigned long buttonPressedStartTime2 = 0;
 
 // Flag set to true when an irrigation ends and the button is still pressed. If this happens then the relay will be closed for safety and an SMS alert will be sent
 bool buttonBrokenFlag1 = false;
@@ -188,7 +185,10 @@ void setup()
 void loop()
 {
   // Read incoming data in SIM800
-  readSIM800Data();
+  readSIM800Data(false); 
+
+  // Additionally, if SMS simulation is on, read Serial input and process it as if it was an SMS.
+  if(SMS_SIMULATION) readSIM800Data(true); 
 
   // Time measurement
   long currentMillis = millis();
@@ -363,7 +363,7 @@ void loop()
       }
     }
   }
-  delay(10);
+  delay(100);
 }
 
   // --- Function to check if a button is in failure state (pushed for too much time)
@@ -373,7 +373,7 @@ void loop()
     // Make pointers for the global variables of the selected buttonId
     int buttonPin;
     bool * wasButtonPressedPtr;
-    int * buttonPressedStartTimePtr;
+    unsigned long * buttonPressedStartTimePtr;
     bool * buttonBrokenFlagPtr;
     int buttonSafetyTime;
     
@@ -396,7 +396,7 @@ void loop()
       default:
         // Unconfigured button selected, just exit the function and trigger a debug message
         if(DEBUG_MODE) Serial.println("Error while reading button status, unknown button selected.");
-        return;  
+        return false;  
     }
 
     bool buttonPressed = !digitalRead(buttonPin);
@@ -513,31 +513,31 @@ void loop()
 
     SerialSIM800.println("AT");                  // Sends an ATTENTION command for initial handshake, reply should be OK
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     SerialSIM800.println("AT+CCID");             //Read SIM information to confirm whether the SIM is plugged
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     SerialSIM800.println("AT+CMGF=1");           // Configuration for sending SMS
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     SerialSIM800.println("AT+CNMI=1,2,0,0,0");   // Configuration for receiving SMS
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     SerialSIM800.println("AT+CSQ");              // Check signal strength
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     SerialSIM800.println("AT+CREG?");            // Network registration test
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     SerialSIM800.println("AT&W");                // Save the configuration settings
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     // Initialize the buffer for reading the incoming Serial data from SIM800
     memset(bufferData, 0, sizeof(bufferData));
@@ -549,24 +549,32 @@ void loop()
   }
 
   //--- Function to send an SMS to the given phone number and with the given text
-  void sendSMS(String text, String phone_number)
+  void sendSMS(char* text, String phone_number)
   {
-    if (DEBUG_MODE) Serial.println("Sending SMS: " + text + " to number: " + phone_number);
+    if (DEBUG_MODE) 
+    {
+      Serial.print("Sending SMS: ");
+      Serial.print(text);
+      Serial.print(" to number: ");
+      Serial.println(phone_number);
+    }
 
     //Your phone number don't forget to include your country code, example +212123456789"
-    SerialSIM800.print("AT+CMGS=\"" + phone_number + "\"\r");
+    SerialSIM800.print("AT+CMGS=\"");
+    SerialSIM800.print(phone_number);
+    SerialSIM800.println("\"\r");
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     //This is the text to send
     SerialSIM800.print(text);
     delay(100);
-    readSIM800Data();
+    readSIM800Data(false);
 
     //Required according to the datasheet)
     SerialSIM800.print((char)26);
     delay(1000);
-    readSIM800Data();
+    readSIM800Data(false);
   }
 
   //--- Function that checks if something has been received by SIM800 and parses it
@@ -574,16 +582,16 @@ void loop()
   //    The sender number is stored in variable senderNum
   //    The message is stored in variable message
   // ---
-  void readSIM800Data()
+  void readSIM800Data(bool simulationMode)
   {
     // If SMS_SIMULATION is ON, data will be get from the user input in the console
-    if (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
+    if (simulationMode ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
     {
       // Stop for 1 second to ensure that the full SMS is received
       delay(1000);
-      while (SMS_SIMULATION ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
+      while (simulationMode ? (Serial.available() > 0) : (SerialSIM800.available() > 0))
       {
-        bufferData[bufferIndex] = SMS_SIMULATION ? Serial.read() : SerialSIM800.read();
+        bufferData[bufferIndex] = simulationMode ? Serial.read() : SerialSIM800.read();
 
         // Finds the string "CMT:"
         // if found, reset the senderNum buffer
@@ -634,7 +642,8 @@ void loop()
 
       if (DEBUG_MODE)
       {
-        Serial.println("------------------> New message: ");
+        if(simulationMode) Serial.println("------------------> New (simulated) message: ");
+        else Serial.println("------------------> New message: ");
         Serial.println(bufferData);
       }
 
@@ -693,9 +702,9 @@ void loop()
     char volumeStr[10];
     dtostrf(voltage, 3, 2, voltageStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
     dtostrf(totalVolume, 3, 2, volumeStr);
-
+    
     sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s,RIEGO1:%s,RIEGO2:%s,RELE:%s", hum, temp, voltageStr, volumeStr, valveOpen1 ? "SI" : "NO", valveOpen2 ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
-
+    
     sendSMS(payload, senderNum);
   }
 
