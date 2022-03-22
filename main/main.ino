@@ -44,18 +44,18 @@ SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 // Sample time for measurements in milliseconds
 const int SAMPLE_TIME = 1000;
 
-// Minimum time between consecutive irrigations in milliseconds for valves 1 and 2
-const int TIME_BETWEEN_IRRIGATIONS1 = 2000;
-const int TIME_BETWEEN_IRRIGATIONS2 = 2000;
+// Minimum time between consecutive irrigations in seconds for valves 1 and 2
+const int TIME_BETWEEN_IRRIGATIONS1 = 2;
+const int TIME_BETWEEN_IRRIGATIONS2 = 2;
 
 // Safety time to detect that a button is stuck on the pushed position and
-// consider that it is broken in milliseconds
-const int BUTTON_SAFETY_TIME1 = 10000;
-const int BUTTON_SAFETY_TIME2 = 10000;
+// consider that it is broken in seconds
+const int BUTTON_SAFETY_TIME1 = 60;
+const int BUTTON_SAFETY_TIME2 = 60;
 
-// Effective irrigation time in milliseconds for valves 1 and 2
-const int EFFECTIVE_IRRIGATION_TIME1 = 7000;
-const int EFFECTIVE_IRRIGATION_TIME2 = 7000;
+// Effective irrigation time in seconds for valves 1 and 2
+const int EFFECTIVE_IRRIGATION_TIME1 = 7;
+const int EFFECTIVE_IRRIGATION_TIME2 = 7;
 
 // Conversion factor from Hz to L/min flow for the water flow sensor
 const float FLOW_CONVERSION_FACTOR = 7.11;
@@ -314,7 +314,7 @@ void loop()
       if (buttonPressed1 || remoteIrrigationPending1)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((currentMillis - irrigationStartTime1) >= (EFFECTIVE_IRRIGATION_TIME1 + TIME_BETWEEN_IRRIGATIONS1) && !valveOpen1)
+        if ((currentMillis - irrigationStartTime1) >= (EFFECTIVE_IRRIGATION_TIME1*1000 + TIME_BETWEEN_IRRIGATIONS1*1000) && !valveOpen1)
         {
           irrigationStartTime1 = currentMillis;
           valveOpen1 = true;
@@ -330,7 +330,7 @@ void loop()
       }
 
       // If the valve 1 has been open for the configured EFFECTIVE_IRRIGATION_TIME1, turn it off
-      if (currentMillis - irrigationStartTime1 >= EFFECTIVE_IRRIGATION_TIME1 && valveOpen1)
+      if (currentMillis - irrigationStartTime1 >= EFFECTIVE_IRRIGATION_TIME1*1000 && valveOpen1)
       {
         valveOpen1 = false;
         closeValve(1);
@@ -340,7 +340,7 @@ void loop()
       if (buttonPressed2 || remoteIrrigationPending2)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((currentMillis - irrigationStartTime2) >= (EFFECTIVE_IRRIGATION_TIME2 + TIME_BETWEEN_IRRIGATIONS2) && !valveOpen2)
+        if ((currentMillis - irrigationStartTime2) >= (EFFECTIVE_IRRIGATION_TIME2*1000 + TIME_BETWEEN_IRRIGATIONS2*1000) && !valveOpen2)
         {
           irrigationStartTime2 = currentMillis;
           valveOpen2 = true;
@@ -356,7 +356,7 @@ void loop()
       }
 
       // If the valve 2 has been open for the configured EFFECTIVE_IRRIGATION_TIME2, turn it off
-      if (currentMillis - irrigationStartTime2 >= EFFECTIVE_IRRIGATION_TIME2 && valveOpen2)
+      if (currentMillis - irrigationStartTime2 >= EFFECTIVE_IRRIGATION_TIME2*1000 && valveOpen2)
       {
         valveOpen2 = false;
         closeValve(2);
@@ -371,11 +371,11 @@ void loop()
   bool checkButtonStatus(int buttonId)
   {
     // Make pointers for the global variables of the selected buttonId
-    int buttonPin;
+    byte buttonPin;
     bool * wasButtonPressedPtr;
     unsigned long * buttonPressedStartTimePtr;
     bool * buttonBrokenFlagPtr;
-    int buttonSafetyTime;
+    unsigned int buttonSafetyTime;
     
     switch (buttonId)
     {
@@ -416,7 +416,7 @@ void loop()
       {
         // The button was already pressed, check if it has been pressed for too long to detect a failure
         int buttonPressedElapsedTime = currentMillis - *buttonPressedStartTimePtr;
-        if (buttonPressedElapsedTime >= buttonSafetyTime)
+        if (buttonPressedElapsedTime >= buttonSafetyTime*1000)
         {
           if(DEBUG_MODE) Serial.println("Failure in button, ignoring status and sending SMS alert");
           
