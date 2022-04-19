@@ -41,8 +41,8 @@
 SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
 
 // ------------ Constants definition ------------//
-// Sample time for measurements in milliseconds
-const int SAMPLE_TIME = 1000;
+// Sample time for measurements in seconds
+const int SAMPLE_TIME = 1;
 
 // Minimum time between consecutive irrigations in seconds for valves 1 and 2
 const int TIME_BETWEEN_IRRIGATIONS1 = 2;
@@ -191,8 +191,8 @@ void loop()
   if(SMS_SIMULATION) readSIM800Data(true); 
 
   // Time measurement
-  long currentMillis = millis();
-  int dt = currentMillis - prevMeasurementTime; //Elapsed time since last measurement
+  unsigned long currentMillis = millis();
+  unsigned int dt = (unsigned int) ((currentMillis - prevMeasurementTime)/1000); //Elapsed time since last measurement in seconds
 
   if (dt >= SAMPLE_TIME || currentMillis == 0) //Run also on first iteration
   {
@@ -216,10 +216,10 @@ void loop()
         EEPROM.write(idx, 0);
       }
     }
-    else totalWaterVolume += (waterFlow_L_min / 60) * (dt / 1000); // volumen(L)=caudal(L/s)*tiempo(s)
+    else totalWaterVolume += (waterFlow_L_min / 60) * dt; // volumen(L)=caudal(L/s)*tiempo(s)
 
     // Persist the totalVolume to the EEPROM when the configured time has passed
-    if ((currentMillis - prevEepromWriteTime) / 60000 >= EEPROM_WRITE_SAMPLE_TIME)
+    if ((unsigned int)((currentMillis - prevEepromWriteTime) / 60000) >= EEPROM_WRITE_SAMPLE_TIME)
     {
       prevEepromWriteTime = currentMillis;
       sendMeasurements = true; // Set flag to true to send the measurements with the new stored water volume to the phone
@@ -314,7 +314,7 @@ void loop()
       if (buttonPressed1 || remoteIrrigationPending1)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((currentMillis - irrigationStartTime1) >= (EFFECTIVE_IRRIGATION_TIME1*1000 + TIME_BETWEEN_IRRIGATIONS1*1000) && !valveOpen1)
+        if ((unsigned int)((currentMillis - irrigationStartTime1)/1000) >= (EFFECTIVE_IRRIGATION_TIME1 + TIME_BETWEEN_IRRIGATIONS1) && !valveOpen1)
         {
           irrigationStartTime1 = currentMillis;
           valveOpen1 = true;
@@ -330,7 +330,7 @@ void loop()
       }
 
       // If the valve 1 has been open for the configured EFFECTIVE_IRRIGATION_TIME1, turn it off
-      if (currentMillis - irrigationStartTime1 >= EFFECTIVE_IRRIGATION_TIME1*1000 && valveOpen1)
+      if ((unsigned int)((currentMillis - irrigationStartTime1)/1000) >= EFFECTIVE_IRRIGATION_TIME1 && valveOpen1)
       {
         valveOpen1 = false;
         closeValve(1);
@@ -340,7 +340,7 @@ void loop()
       if (buttonPressed2 || remoteIrrigationPending2)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((currentMillis - irrigationStartTime2) >= (EFFECTIVE_IRRIGATION_TIME2*1000 + TIME_BETWEEN_IRRIGATIONS2*1000) && !valveOpen2)
+        if ((unsigned int)((currentMillis - irrigationStartTime2)/1000) >= (EFFECTIVE_IRRIGATION_TIME2 + TIME_BETWEEN_IRRIGATIONS2) && !valveOpen2)
         {
           irrigationStartTime2 = currentMillis;
           valveOpen2 = true;
@@ -356,7 +356,7 @@ void loop()
       }
 
       // If the valve 2 has been open for the configured EFFECTIVE_IRRIGATION_TIME2, turn it off
-      if (currentMillis - irrigationStartTime2 >= EFFECTIVE_IRRIGATION_TIME2*1000 && valveOpen2)
+      if ((unsigned int)((currentMillis - irrigationStartTime2)/1000) >= EFFECTIVE_IRRIGATION_TIME2 && valveOpen2)
       {
         valveOpen2 = false;
         closeValve(2);
@@ -403,7 +403,7 @@ void loop()
     if (buttonPressed)
     {
       // Read current time
-      int currentMillis =  millis();
+      unsigned long currentMillis =  millis();
       
       // The button is pressed, check if it was already pressed in the last loop
       if (!(*wasButtonPressedPtr))
@@ -414,9 +414,8 @@ void loop()
       }
       else
       {
-        // The button was already pressed, check if it has been pressed for too long to detect a failure
-        int buttonPressedElapsedTime = currentMillis - *buttonPressedStartTimePtr;
-        if (buttonPressedElapsedTime >= buttonSafetyTime*1000)
+        // The button was already pressed, check if it has been pressed for too long to detect a failure        
+        if ((unsigned int) ((currentMillis - *buttonPressedStartTimePtr)/1000) >= buttonSafetyTime)
         {
           if(DEBUG_MODE) Serial.println("Failure in button, ignoring status and sending SMS alert");
           
@@ -717,7 +716,10 @@ void loop()
     char voltageStr[10];
     dtostrf(voltage, 3, 2, voltageStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
 
-    sprintf(payload, "ALERTA, voltage demasiado bajo: %s V", voltageStr);
+    char waterVolumeStr[10];
+    dtostrf(totalWaterVolume, 3, 2, waterVolumeStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
+
+    sprintf(payload, "ALERTA, voltage demasiado bajo: %s V. Litros: %s", voltageStr, waterVolumeStr);
 
     sendSMS(payload, PHONE_NUMBER);
   }
@@ -732,8 +734,11 @@ void loop()
   //--- Function to inform the user that the button is broken ---//
   void sendBrokenButtonSMS(int buttonId)
   {
-    if(buttonId == 1) sendSMS("ALERTA, el boton de riego 1 esta bloqueado.", PHONE_NUMBER);
-    else if(buttonId == 2) sendSMS("ALERTA, el boton de riego 2 esta bloqueado.", PHONE_NUMBER);
+    char waterVolumeStr[10];
+    dtostrf(totalWaterVolume, 3, 2, waterVolumeStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
+    
+    if(buttonId == 1) sendSMS("ALERTA, el boton de riego 1 esta bloqueado. Litros: %s", PHONE_NUMBER, waterVolumeStr);
+    else if(buttonId == 2) sendSMS("ALERTA, el boton de riego 2 esta bloqueado. Litros: %s", PHONE_NUMBER, waterVolumeStr);
     
   }
 
