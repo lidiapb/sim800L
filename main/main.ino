@@ -736,10 +736,10 @@ void loop()
   {
     char waterVolumeStr[10];
     dtostrf(totalWaterVolume, 3, 2, waterVolumeStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
-    
-    if(buttonId == 1) sendSMS("ALERTA, el boton de riego 1 esta bloqueado. Litros: %s", PHONE_NUMBER, waterVolumeStr);
-    else if(buttonId == 2) sendSMS("ALERTA, el boton de riego 2 esta bloqueado. Litros: %s", PHONE_NUMBER, waterVolumeStr);
-    
+
+    char payload[100];
+    sprintf(payload, "ALERTA, el boton de riego %d esta bloqueado. Litros: %s", buttonId, waterVolumeStr);
+    sendSMS(payload, PHONE_NUMBER);      
   }
 
   //--- Function to inform the user that the requested relay closure is being executed ---//
