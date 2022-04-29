@@ -70,7 +70,7 @@ const int TEMPERATURE_THRESHOLD = 980;
 const byte VOLTAGE_THRESHOLD = 6;
 
 // Phone number for the SMS alerts
-const String PHONE_NUMBER = "+34605521505";
+const char PHONE_NUMBER[14] = "+34605521505";
 
 // Size of buffer for incoming data from SIM800
 const int BUFFER_SIZE = 127;
@@ -314,7 +314,7 @@ void loop()
       if (buttonPressed1 || remoteIrrigationPending1)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((unsigned int)((currentMillis - irrigationStartTime1)/1000) >= (EFFECTIVE_IRRIGATION_TIME1 + TIME_BETWEEN_IRRIGATIONS1) && !valveOpen1)
+        if ((((unsigned int)((currentMillis - irrigationStartTime1)/1000) >= (EFFECTIVE_IRRIGATION_TIME1 + TIME_BETWEEN_IRRIGATIONS1)) || irrigationStartTime1 == 0) && !valveOpen1)
         {
           irrigationStartTime1 = currentMillis;
           valveOpen1 = true;
@@ -340,7 +340,7 @@ void loop()
       if (buttonPressed2 || remoteIrrigationPending2)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((unsigned int)((currentMillis - irrigationStartTime2)/1000) >= (EFFECTIVE_IRRIGATION_TIME2 + TIME_BETWEEN_IRRIGATIONS2) && !valveOpen2)
+        if ((((unsigned int)((currentMillis - irrigationStartTime2)/1000) >= (EFFECTIVE_IRRIGATION_TIME2 + TIME_BETWEEN_IRRIGATIONS2)) || irrigationStartTime2 == 0) && !valveOpen2)
         {
           irrigationStartTime2 = currentMillis;
           valveOpen2 = true;
@@ -541,14 +541,10 @@ void loop()
     // Initialize the buffer for reading the incoming Serial data from SIM800
     memset(bufferData, 0, sizeof(bufferData));
     bufferIndex = 0;
-
-    // Initially store the PHONE_NUMBER as senderNum for the periodic measurements send.
-    PHONE_NUMBER.toCharArray(senderNum, 14);
-    Serial.println(senderNum);
   }
 
   //--- Function to send an SMS to the given phone number and with the given text
-  void sendSMS(char* text, String phone_number)
+  void sendSMS(char* text, char* phone_number)
   {
     if (DEBUG_MODE) 
     {
