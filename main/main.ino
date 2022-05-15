@@ -16,12 +16,6 @@
 // Voltage sensor
 #define PIN_VOLTAGE_SENSOR A0
 
-// Humidity sensor
-#define PIN_HUMIDITY_SENSOR A1
-
-// Temperature sensor
-#define PIN_TEMPERATURE_SENSOR A2
-
 // Safety relay
 #define PIN_SAFETY_RELAY 10
 
@@ -51,12 +45,6 @@ const int EFFECTIVE_IRRIGATION_TIME = 7;
 
 // Conversion factor from Hz to L/min flow for the water flow sensor
 const float FLOW_CONVERSION_FACTOR = 7.11;
-
-// Humidity threshold for irrigation (only irrigate below this value)
-const int HUMIDITY_THRESHOLD = 720;
-
-// Temperature threshold for irrigation (only irrigate over this value)
-const int TEMPERATURE_THRESHOLD = 980;
 
 // Voltage threshold for irrigation (only irrigate over this value) and SMS alert
 const byte VOLTAGE_THRESHOLD = 6;
@@ -212,8 +200,6 @@ void loop()
     }
 
     // Read sensors
-    int humidity = analogRead(PIN_HUMIDITY_SENSOR);
-    int temperature = analogRead(PIN_TEMPERATURE_SENSOR);
     float voltage = analogRead(PIN_VOLTAGE_SENSOR) * (5.01 / 1023.00) * 1.24;
 
     // SMS alert if voltage is under threshold
@@ -240,14 +226,14 @@ void loop()
     if (sendMeasurements)
     {
       sendMeasurements = false; // Setting it to false to avoid send in loop
-      sendMeasurementsSMS(humidity, temperature, voltage, totalWaterVolume);
+      sendMeasurementsSMS(voltage, totalWaterVolume);
     }
 
     // Print measurements only in debug mode
-    if (DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
+    if (DEBUG_MODE) printMeasurements(voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
 
-    // If batteries are running out, temperature is too low or humidity is too high or the button is broken, turn off the system for safety and to save power
-    if (humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD  || closeRelayRequested || buttonBrokenFlag)
+    // If batteries are running out or the button is broken, turn off the system for safety and to save power
+    if (voltage < VOLTAGE_THRESHOLD || closeRelayRequested || buttonBrokenFlag)
     {
       // Ensure valves stay closed
       if (valveOpen)
@@ -374,13 +360,9 @@ void loop()
   }
 
   //--- Function for pretty-printing the measurements--------//
-  void printMeasurements(int hum, int temp, float voltage, float waterFlow, float totalVolume, bool buttonPressed)
+  void printMeasurements(float voltage, float waterFlow, float totalVolume, bool buttonPressed)
   {
     if (!DEBUG_MODE) return;
-    Serial.print("Humedad: ");
-    Serial.println(hum);
-    Serial.print("Temperatura: ");
-    Serial.println(temp);
     Serial.print("Voltage: ");
     Serial.println(voltage);
     Serial.print("Caudal: ");
@@ -569,7 +551,7 @@ void loop()
   }
 
   //--- Function to format and send the SMS with the sensor measurements. The used phone number is the one read from the received request ---//
-  void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
+  void sendMeasurementsSMS(float voltage, float totalVolume)
   {
     char payload[100];
 
@@ -579,7 +561,7 @@ void loop()
     dtostrf(voltage, 3, 2, voltageStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
     dtostrf(totalVolume, 3, 2, volumeStr);
     
-    sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s,RIEGO:%s,RELE:%s", hum, temp, voltageStr, volumeStr, valveOpen ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
+    sprintf(payload, "VOLT:%s,LITROS:%s,RIEGO:%s,RELE:%s", voltageStr, volumeStr, valveOpen ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
     
     sendSMS(payload, senderNum);
   }
