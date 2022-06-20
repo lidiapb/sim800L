@@ -1,5 +1,6 @@
 #include <SoftwareSerial.h> // For serial communication with the SIM800L module
 #include <EEPROM.h> // For persistent data storage into the memory
+#include <DHT.h> // For DHT, humidity and temperature sensor
 
 // ------------ Debug mode configuration ------------//
 # define DEBUG_MODE true
@@ -20,11 +21,11 @@
 // Voltage sensor
 #define PIN_VOLTAGE_SENSOR A0
 
-// Humidity sensor
-#define PIN_HUMIDITY_SENSOR A1
+// Humidity and temperature sensor
+#define PIN_DHT_SENSOR A1
 
-// Temperature sensor
-#define PIN_TEMPERATURE_SENSOR A2
+// Light sensor
+#define PIN_LIGHT_SENSOR A2
 
 // Safety relay
 #define PIN_SAFETY_RELAY 10
@@ -39,6 +40,9 @@
 
 // Create object for serial communication with SIM800
 SoftwareSerial SerialSIM800(PIN_RX, PIN_TX);
+
+// Create object for interaction with DHT sensor. DHT_22 is the sensor model
+DHT dht(PIN_DHT_SENSOR, DHT22);
 
 // ------------ Constants definition ------------//
 // Sample time for measurements in seconds
@@ -65,6 +69,9 @@ const int HUMIDITY_THRESHOLD = 720;
 
 // Temperature threshold for irrigation (only irrigate over this value)
 const int TEMPERATURE_THRESHOLD = 980;
+
+// Light threshold for irrigation (only irrigate below this value) 
+const int LIGHT_THRESHOLD = 1000;
 
 // Voltage threshold for irrigation (only irrigate over this value) and SMS alert
 const byte VOLTAGE_THRESHOLD = 6;
@@ -173,6 +180,9 @@ void setup()
   attachInterrupt(0, countPulses , RISING); //(Interrupción 0(Pin2),función,Flanco de subida)
   interrupts();
 
+  // Initialize DHT sensor
+  dht.begin();
+
   // Initialise SIM800
   initializeSIM800();
 
@@ -230,8 +240,9 @@ void loop()
     }
 
     // Read sensors
-    int humidity = analogRead(PIN_HUMIDITY_SENSOR);
-    int temperature = analogRead(PIN_TEMPERATURE_SENSOR);
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature();
+    float light = analogRead(PIN_LIGHT_SENSOR);
     float voltage = analogRead(PIN_VOLTAGE_SENSOR) * (5.01 / 1023.00) * 1.24;
 
     // SMS alert if voltage is under threshold
@@ -270,14 +281,14 @@ void loop()
     if (sendMeasurements)
     {
       sendMeasurements = false; // Setting it to false to avoid send in loop
-      sendMeasurementsSMS(humidity, temperature, voltage, totalWaterVolume);
+      sendMeasurementsSMS(humidity, temperature, light, voltage, totalWaterVolume);
     }
 
     // Print measurements only in debug mode
-    if (DEBUG_MODE) printMeasurements(humidity, temperature, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed1, buttonPressed2);
+    if (DEBUG_MODE) printMeasurements(humidity, temperature, light, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed1, buttonPressed2);
 
     // If batteries are running out, temperature is too low or humidity is too high or the button is broken, turn off the system for safety and to save power
-    if (humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD  || closeRelayRequested || buttonBrokenFlag1 || buttonBrokenFlag2)
+    if (humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD || light > LIGHT_THRESHOLD || closeRelayRequested || buttonBrokenFlag1 || buttonBrokenFlag2)
     {
       // Ensure valves stay closed
       if (valveOpen1)
@@ -485,13 +496,15 @@ void loop()
   }
 
   //--- Function for pretty-printing the measurements--------//
-  void printMeasurements(int hum, int temp, float voltage, float waterFlow, float totalVolume, bool buttonPressed1, bool buttonPressed2)
+  void printMeasurements(float hum, float temp, float light, float voltage, float waterFlow, float totalVolume, bool buttonPressed1, bool buttonPressed2)
   {
     if (!DEBUG_MODE) return;
     Serial.print("Humedad: ");
     Serial.println(hum);
     Serial.print("Temperatura: ");
     Serial.println(temp);
+    Serial.print("Luz: ");
+    Serial.println(light);
     Serial.print("Voltage: ");
     Serial.println(voltage);
     Serial.print("Caudal: ");
@@ -688,17 +701,22 @@ void loop()
   }
 
   //--- Function to format and send the SMS with the sensor measurements. The used phone number is the one read from the received request ---//
-  void sendMeasurementsSMS(int hum, int temp, float voltage, float totalVolume)
+  void sendMeasurementsSMS(float hum, float temp, float light, float voltage, float totalVolume)
   {
     char payload[100];
 
     // Convert floatt to char arrays. Sprintf does not work with floats
     char voltageStr[10];
     char volumeStr[10];
+    char humStr[10];
+    char tempStr[10];
+    char lightStr[10];
     dtostrf(voltage, 3, 2, voltageStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
-    dtostrf(totalVolume, 3, 2, volumeStr);
+    dtostrf(hum, 3, 2, humStr);
+    dtostrf(temp, 3, 2, tempStr);
+    dtostrf(light, 3, 2, lightStr);
     
-    sprintf(payload, "HUM:%d,TEMP:%d,VOLT:%s,LITROS:%s,RIEGO1:%s,RIEGO2:%s,RELE:%s", hum, temp, voltageStr, volumeStr, valveOpen1 ? "SI" : "NO", valveOpen2 ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
+    sprintf(payload, "HUM:%s,TEMP:%s,LIGHT:%s,VOLT:%s,LITROS:%s,RIEGO1:%s,RIEGO2:%s,RELE:%s", humStr, tempStr, lightStr, voltageStr, volumeStr, valveOpen1 ? "SI" : "NO", valveOpen2 ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
     
     sendSMS(payload, senderNum);
   }
