@@ -7,13 +7,9 @@
 # define SMS_SIMULATION false // Simulate Sim800 serial in local Arduino serial. Example message: +CMT: "+34605521505","","22/02/04,01:47:51+04" RIEGO,MEASUREMENTS
 
 // ------------ Pins definition ------------//
-// Valve 1: 2 pins for H-bridge (A-, A+)
-#define PIN_VALVE1_A1 12
-#define PIN_VALVE1_A2 11
-
-// Valve 2: 2 pins for H-bridge (A-, A+)
-#define PIN_VALVE2_A1 6
-#define PIN_VALVE2_A2 5
+// Valve: 2 pins for H-bridge (A-, A+)
+#define PIN_VALVE_A1 12
+#define PIN_VALVE_A2 11
 
 // Water flow sensor
 #define PIN_FLOW_SENSOR 2
@@ -31,8 +27,7 @@
 #define PIN_SAFETY_RELAY 10
 
 // Input buttons
-#define PIN_INPUT_BUTTON1 7
-#define PIN_INPUT_BUTTON2 4
+#define PIN_INPUT_BUTTON 7
 
 // Serial TX and RX for communication with SIM800L
 #define PIN_RX 8
@@ -48,18 +43,15 @@ DHT dht(PIN_DHT_SENSOR, DHT22);
 // Sample time for measurements in seconds
 const int SAMPLE_TIME = 1;
 
-// Minimum time between consecutive irrigations in seconds for valves 1 and 2
-const int TIME_BETWEEN_IRRIGATIONS1 = 2;
-const int TIME_BETWEEN_IRRIGATIONS2 = 2;
+// Minimum time between consecutive irrigations in seconds
+const int TIME_BETWEEN_IRRIGATIONS = 2;
 
 // Safety time to detect that a button is stuck on the pushed position and
 // consider that it is broken in seconds
-const int BUTTON_SAFETY_TIME1 = 60;
-const int BUTTON_SAFETY_TIME2 = 60;
+const int BUTTON_SAFETY_TIME = 60;
 
-// Effective irrigation time in seconds for valves 1 and 2
-const int EFFECTIVE_IRRIGATION_TIME1 = 7;
-const int EFFECTIVE_IRRIGATION_TIME2 = 7;
+// Effective irrigation time in seconds
+const int EFFECTIVE_IRRIGATION_TIME = 7;
 
 // Conversion factor from Hz to L/min flow for the water flow sensor
 const float FLOW_CONVERSION_FACTOR = 7.11;
@@ -86,8 +78,7 @@ const int BUFFER_SIZE = 127;
 const char* STATUS_COMMAND = "ESTADO";
 
 // Commands to request a manual irrigation for valves 1 and 2 (similar to pressing the button)
-const char* IRRIGATION_COMMAND1 = "RIEGO1";
-const char* IRRIGATION_COMMAND2 = "RIEGO2";
+const char* IRRIGATION_COMMAND = "RIEGO";
 
 // Command to request a manual close of the relay
 const char* CLOSE_COMMAND = "CERRAR";
@@ -100,8 +91,7 @@ const int EEPROM_ADDRESS = 0;
 
 // ------------ Global variables ------------//
 // Boolean for the irrigation valve to be open
-bool valveOpen1 = false;
-bool valveOpen2 = false;
+bool valveOpen = false;
 
 // Boolean for relay status
 bool relayOn = false;
@@ -110,8 +100,7 @@ bool relayOn = false;
 unsigned long prevMeasurementTime = 0;
 
 // Reference time when the irrigation started
-unsigned long irrigationStartTime1 = 0 ;
-unsigned long irrigationStartTime2 = 0 ;
+unsigned long irrigationStartTime = 0 ;
 
 // Counter for flow sensor pulses
 volatile unsigned int pulsesCount;
@@ -143,20 +132,16 @@ unsigned long prevEepromWriteTime = 0;
 bool lowVoltageSmsSent = false;
 
 // Flag to mark that an irrigation has been requested by SMS
-bool remoteIrrigationPending1 = false;
-bool remoteIrrigationPending2 = false;
+bool remoteIrrigationPending = false;
 
 // Flag to detect if the button was pressed on the previous loop
-bool wasButtonPressed1 = false;
-bool wasButtonPressed2 = false;
+bool wasButtonPressed = false;
 
 // Variable to store the initial timestamp when the button was pressed (in milliseconds since program start time)
-unsigned long buttonPressedStartTime1 = 0;
-unsigned long buttonPressedStartTime2 = 0;
+unsigned long buttonPressedStartTime = 0;
 
 // Flag set to true when an irrigation ends and the button is still pressed. If this happens then the relay will be closed for safety and an SMS alert will be sent
-bool buttonBrokenFlag1 = false;
-bool buttonBrokenFlag2 = false;
+bool buttonBrokenFlag = false;
 
 // Flag to mark that a relay closure has been requested by SMS
 bool closeRelayRequested = false;
@@ -168,12 +153,9 @@ void setup()
 
   // Define pin modes
   pinMode(PIN_FLOW_SENSOR, INPUT);
-  pinMode(PIN_INPUT_BUTTON1, INPUT_PULLUP); // Configura pin 7 interno pull-up resistor  Estado en 1, requiere 0 para activarse
-  pinMode(PIN_INPUT_BUTTON2, INPUT_PULLUP); // Configura pin 7 interno pull-up resistor  Estado en 1, requiere 0 para activarse
-  pinMode(PIN_VALVE1_A1, OUTPUT); // Pin valvula 1 A-
-  pinMode(PIN_VALVE1_A2, OUTPUT); // Pin valvula 1 A+
-  pinMode(PIN_VALVE2_A1, OUTPUT); // Pin valvula 2 A-
-  pinMode(PIN_VALVE2_A2, OUTPUT); // Pin valvula 2 A+
+  pinMode(PIN_INPUT_BUTTON, INPUT_PULLUP); // Configura pin 7 interno pull-up resistor  Estado en 1, requiere 0 para activarse
+  pinMode(PIN_VALVE_A1, OUTPUT); // Pin valvula 1 A-
+  pinMode(PIN_VALVE_A2, OUTPUT); // Pin valvula 1 A+
   pinMode(PIN_SAFETY_RELAY, OUTPUT); // Salida rele para apagado voltage seguridad
 
   // Define interruption for flow sensor
@@ -253,28 +235,16 @@ void loop()
     }
 
     // Check button status. If it is low, buttonPresed = true. If the button is broken, this will always give false to ignore it and stop irrgating
-    bool buttonPressed1;
-    if (buttonBrokenFlag1)
+    bool buttonPressed;
+    if (buttonBrokenFlag)
     {
       // The button has been detected to have a failure, ignore its current status.
-      buttonPressed1 = false;
+      buttonPressed = false;
     }
     else
     {
       // The button is not in failure state, check its status
-      buttonPressed1 = checkButtonStatus(1);
-    }
-
-    bool buttonPressed2;
-    if (buttonBrokenFlag2)
-    {
-      // The button has been detected to have a failure, ignore its current status.
-      buttonPressed2 = false;
-    }
-    else
-    {
-      // The button is not in failure state, check its status
-      buttonPressed2 = checkButtonStatus(2);
+      buttonPressed = checkButtonStatus();
     }
 
     // Send measurements when requested through SMS
@@ -285,23 +255,17 @@ void loop()
     }
 
     // Print measurements only in debug mode
-    if (DEBUG_MODE) printMeasurements(humidity, temperature, light, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed1, buttonPressed2);
+    if (DEBUG_MODE) printMeasurements(humidity, temperature, light, voltage, waterFlow_L_min, totalWaterVolume, buttonPressed);
 
     // If batteries are running out, temperature is too low or humidity is too high or the button is broken, turn off the system for safety and to save power
-    if (humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD || light > LIGHT_THRESHOLD || closeRelayRequested || buttonBrokenFlag1 || buttonBrokenFlag2)
+    if (humidity > HUMIDITY_THRESHOLD || voltage < VOLTAGE_THRESHOLD || temperature < TEMPERATURE_THRESHOLD || light > LIGHT_THRESHOLD || closeRelayRequested || buttonBrokenFlag)
     {
       // Ensure valves stay closed
-      if (valveOpen1)
+      if (valveOpen)
       {
-        closeValve(1);
-        valveOpen1 = false;
-      }
-      
-      if (valveOpen2)
-      {
-        closeValve(2);
-        valveOpen2 = false;
-      }
+        closeValve();
+        valveOpen = false;
+      }     
 
       if (relayOn)
       {
@@ -322,55 +286,29 @@ void loop()
       }
 
       // If irrigation is requested for valve 1
-      if (buttonPressed1 || remoteIrrigationPending1)
+      if (buttonPressed || remoteIrrigationPending)
       {
         // Only irrigate if enough time has passed since last irrigation
-        if ((((unsigned int)((currentMillis - irrigationStartTime1)/1000) >= (EFFECTIVE_IRRIGATION_TIME1 + TIME_BETWEEN_IRRIGATIONS1)) || irrigationStartTime1 == 0) && !valveOpen1)
+        if ((((unsigned int)((currentMillis - irrigationStartTime)/1000) >= (EFFECTIVE_IRRIGATION_TIME + TIME_BETWEEN_IRRIGATIONS)) || irrigationStartTime == 0) && !valveOpen)
         {
-          irrigationStartTime1 = currentMillis;
-          valveOpen1 = true;
-          openValve(1);
+          irrigationStartTime = currentMillis;
+          valveOpen = true;
+          openValve();
 
           // If the request was remote, clear the flag and notify the user that the irrigation is starting
-          if (remoteIrrigationPending1)
+          if (remoteIrrigationPending)
           {
-            remoteIrrigationPending1 = false;
-            sendIrrigationConfirmationSMS(1);
+            remoteIrrigationPending = false;
+            sendIrrigationConfirmationSMS();
           }
         }
       }
 
       // If the valve 1 has been open for the configured EFFECTIVE_IRRIGATION_TIME1, turn it off
-      if ((unsigned int)((currentMillis - irrigationStartTime1)/1000) >= EFFECTIVE_IRRIGATION_TIME1 && valveOpen1)
+      if ((unsigned int)((currentMillis - irrigationStartTime)/1000) >= EFFECTIVE_IRRIGATION_TIME && valveOpen)
       {
-        valveOpen1 = false;
-        closeValve(1);
-      }
-
-      // If irrigation is requested for valve 2
-      if (buttonPressed2 || remoteIrrigationPending2)
-      {
-        // Only irrigate if enough time has passed since last irrigation
-        if ((((unsigned int)((currentMillis - irrigationStartTime2)/1000) >= (EFFECTIVE_IRRIGATION_TIME2 + TIME_BETWEEN_IRRIGATIONS2)) || irrigationStartTime2 == 0) && !valveOpen2)
-        {
-          irrigationStartTime2 = currentMillis;
-          valveOpen2 = true;
-          openValve(2);
-
-          // If the request was remote, clear the flag and notify the user that the irrigation is starting
-          if (remoteIrrigationPending2)
-          {
-            remoteIrrigationPending2 = false;
-            sendIrrigationConfirmationSMS(2);
-          }
-        }
-      }
-
-      // If the valve 2 has been open for the configured EFFECTIVE_IRRIGATION_TIME2, turn it off
-      if ((unsigned int)((currentMillis - irrigationStartTime2)/1000) >= EFFECTIVE_IRRIGATION_TIME2 && valveOpen2)
-      {
-        valveOpen2 = false;
-        closeValve(2);
+        valveOpen = false;
+        closeValve();
       }
     }
   }
@@ -379,113 +317,66 @@ void loop()
 
   // --- Function to check if a button is in failure state (pushed for too much time)
   // The argument 'buttonId' identifies the button in case of multiple ones.
-  bool checkButtonStatus(int buttonId)
+  bool checkButtonStatus()
   {
-    // Make pointers for the global variables of the selected buttonId
-    byte buttonPin;
-    bool * wasButtonPressedPtr;
-    unsigned long * buttonPressedStartTimePtr;
-    bool * buttonBrokenFlagPtr;
-    unsigned int buttonSafetyTime;
-    
-    switch (buttonId)
-    {
-      case 1:
-        buttonPin = PIN_INPUT_BUTTON1;
-        wasButtonPressedPtr = &wasButtonPressed1;
-        buttonPressedStartTimePtr = &buttonPressedStartTime1;
-        buttonBrokenFlagPtr = &buttonBrokenFlag1;
-        buttonSafetyTime = BUTTON_SAFETY_TIME1;
-        break;
-      case 2:
-        buttonPin = PIN_INPUT_BUTTON2;
-        wasButtonPressedPtr = &wasButtonPressed2;
-        buttonPressedStartTimePtr = &buttonPressedStartTime2;
-        buttonBrokenFlagPtr = &buttonBrokenFlag2;
-        buttonSafetyTime = BUTTON_SAFETY_TIME2;
-        break;
-      default:
-        // Unconfigured button selected, just exit the function and trigger a debug message
-        if(DEBUG_MODE) Serial.println("Error while reading button status, unknown button selected.");
-        return false;  
-    }
-
-    bool buttonPressed = !digitalRead(buttonPin);
+    bool buttonPressed = !digitalRead(PIN_INPUT_BUTTON);
     if (buttonPressed)
     {
       // Read current time
       unsigned long currentMillis =  millis();
       
       // The button is pressed, check if it was already pressed in the last loop
-      if (!(*wasButtonPressedPtr))
+      if (!wasButtonPressed)
       {
         // The button was not pressed, store the time when the button was initially pressed
-        *wasButtonPressedPtr = true;
-        *buttonPressedStartTimePtr = currentMillis;
+        wasButtonPressed = true;
+        buttonPressedStartTime = currentMillis;
       }
       else
       {
         // The button was already pressed, check if it has been pressed for too long to detect a failure        
-        if ((unsigned int) ((currentMillis - *buttonPressedStartTimePtr)/1000) >= buttonSafetyTime)
+        if ((unsigned int) ((currentMillis - buttonPressedStartTime)/1000) >= BUTTON_SAFETY_TIME)
         {
           if(DEBUG_MODE) Serial.println("Failure in button, ignoring status and sending SMS alert");
           
           // Button pressed overtime -> Set the buttonBrokenFlag to true
-          *buttonBrokenFlagPtr = true;
+          buttonBrokenFlag = true;
 
           // Set button pressed to false to avoid irrigation.
           buttonPressed = false;
   
           // Send SMS to nofity that the button is broken
-          sendBrokenButtonSMS(buttonId);
+          sendBrokenButtonSMS();
         }
       }
     }
     else
     {
       // The button is not pressed, clear the pressed status for the next loop
-      *wasButtonPressedPtr = false;
+      wasButtonPressed = false;
     }
     return buttonPressed;
   }
 
   // -------- Function to open valve ---------- //
-  void openValve(int valveId)
+  void openValve()
   {
-    if(valveId == 1)
-    {
-      digitalWrite(PIN_VALVE1_A1, HIGH);
-      digitalWrite(PIN_VALVE1_A2, LOW);
-      delay(300);
-      digitalWrite(PIN_VALVE1_A1, LOW);      
-    }
-    else if(valveId == 2)
-    {
-      digitalWrite(PIN_VALVE2_A1, HIGH);
-      digitalWrite(PIN_VALVE2_A2, LOW);
-      delay(300);
-      digitalWrite(PIN_VALVE2_A1, LOW);
-    }
+    digitalWrite(PIN_VALVE_A1, HIGH);
+    digitalWrite(PIN_VALVE_A2, LOW);
+    delay(300);
+    digitalWrite(PIN_VALVE_A1, LOW);      
+
     if (DEBUG_MODE) Serial.println("OPEN RIEGO");
   }
 
   // -------- Function to close valve ---------- //
-  void closeValve(int valveId)
+  void closeValve()
   {
-    if(valveId == 1)
-    {
-      digitalWrite(PIN_VALVE1_A2, HIGH);
-      digitalWrite(PIN_VALVE1_A1, LOW);
-      delay(300);
-      digitalWrite(PIN_VALVE1_A2, LOW);     
-    }
-    else if(valveId == 2)
-    {
-      digitalWrite(PIN_VALVE2_A2, HIGH);
-      digitalWrite(PIN_VALVE2_A1, LOW);  
-      delay(300);
-      digitalWrite(PIN_VALVE2_A2, LOW);
-    }
+    digitalWrite(PIN_VALVE_A2, HIGH);
+    digitalWrite(PIN_VALVE_A1, LOW);
+    delay(300);
+    digitalWrite(PIN_VALVE_A2, LOW);     
+
     if (DEBUG_MODE) Serial.println("CLOSED RIEGO");
   }
 
@@ -496,7 +387,7 @@ void loop()
   }
 
   //--- Function for pretty-printing the measurements--------//
-  void printMeasurements(float hum, float temp, float light, float voltage, float waterFlow, float totalVolume, bool buttonPressed1, bool buttonPressed2)
+  void printMeasurements(float hum, float temp, float light, float voltage, float waterFlow, float totalVolume, bool buttonPressed)
   {
     if (!DEBUG_MODE) return;
     Serial.print("Humedad: ");
@@ -512,10 +403,8 @@ void loop()
     Serial.print("L/min\tVolumen: ");
     Serial.print(totalVolume, 3);
     Serial.println(" L");
-    Serial.print("Boton 1 pulsado: ");
-    Serial.println(buttonPressed1);
-    Serial.print("Boton 2 pulsado: ");
-    Serial.println(buttonPressed2);
+    Serial.print("Boton pulsado: ");
+    Serial.println(buttonPressed);
   }
 
   //--- Function to initialize and configure the module. Input buffer is read after every command to avoid buffer overflow
@@ -680,16 +569,10 @@ void loop()
       if (DEBUG_MODE) Serial.println("Measurements request received!");
     }
 
-    if (strstr(message, IRRIGATION_COMMAND1))
+    if (strstr(message, IRRIGATION_COMMAND))
     {
-      remoteIrrigationPending1 = true;
+      remoteIrrigationPending = true;
       if (DEBUG_MODE) Serial.println("Remote irrigation request received for valve 1!");
-    }
-
-    if (strstr(message, IRRIGATION_COMMAND2))
-    {
-      remoteIrrigationPending2 = true;
-      if (DEBUG_MODE) Serial.println("Remote irrigation request received for valve 2!");
     }
 
     if (strstr(message, CLOSE_COMMAND))
@@ -716,7 +599,7 @@ void loop()
     dtostrf(temp, 3, 2, tempStr);
     dtostrf(light, 3, 2, lightStr);
     
-    sprintf(payload, "HUM:%s,TEMP:%s,LIGHT:%s,VOLT:%s,LITROS:%s,RIEGO1:%s,RIEGO2:%s,RELE:%s", humStr, tempStr, lightStr, voltageStr, volumeStr, valveOpen1 ? "SI" : "NO", valveOpen2 ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
+    sprintf(payload, "HUM:%s,TEMP:%s,LIGHT:%s,VOLT:%s,LITROS:%s,RIEGO:%s,RELE:%s", humStr, tempStr, lightStr, voltageStr, volumeStr, valveOpen ? "SI" : "NO", relayOn ? "ABIERTO" : "CERRADO");
     
     sendSMS(payload, senderNum);
   }
@@ -739,20 +622,19 @@ void loop()
   }
 
   //--- Function to inform the user that the requested irrigation is being executed ---//
-  void sendIrrigationConfirmationSMS(int valveId)
+  void sendIrrigationConfirmationSMS()
   {
-    if(valveId == 1) sendSMS("OK, Riego en marcha para valvula 1", senderNum);
-    else if(valveId == 2) sendSMS("OK, Riego en marcha para valvula 2", senderNum);
+     sendSMS("OK, Riego en marcha", senderNum);
   }
 
   //--- Function to inform the user that the button is broken ---//
-  void sendBrokenButtonSMS(int buttonId)
+  void sendBrokenButtonSMS()
   {
     char waterVolumeStr[10];
     dtostrf(totalWaterVolume, 3, 2, waterVolumeStr); // Minimum 3 digits (with the decimal point) and 2 decimals of precision
 
     char payload[100];
-    sprintf(payload, "ALERTA, el boton de riego %d esta bloqueado. Litros: %s", buttonId, waterVolumeStr);
+    sprintf(payload, "ALERTA, el boton de riego esta bloqueado. Litros: %s", waterVolumeStr);
     sendSMS(payload, PHONE_NUMBER);      
   }
 
